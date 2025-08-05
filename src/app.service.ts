@@ -566,67 +566,69 @@ export class AppService {
   /**
    * COMPANY CUSTOMER COUNT SERVICES
    */
-  // async generateCompanyCustomerCount() {
-  //   const customerCount = {};
+  async generateCompanyCustomerCount() {
+    const customerCount = {};
         
-  //   const customers = await this.getCustomers();
+    const customers = await this.getCustomers();
 
-  //   console.log('chek customerCount before:', customerCount);
+    console.log('chek customerCount before:', customerCount);
 
-  //   customers.forEach((customer) => {
-  //     if (customer.defaultAddress?.company) {
-  //       const pointer = customer.defaultAddress.company.trim();
-  //       if (customerCount[pointer]) {
-  //         customerCount[pointer] = customerCount[pointer] + 1;
-  //       } else {
-  //         customerCount[pointer] = 1;
-  //       }
-  //     }
-  //   })
+    customers.forEach((customer) => {
+      if (customer.defaultAddress?.company) {
+        const pointer = customer.defaultAddress.company.trim();
+        if (customerCount[pointer]) {
+          customerCount[pointer] = customerCount[pointer] + 1;
+        } else {
+          customerCount[pointer] = 1;
+        }
+      }
+    })
 
-  //   console.log('chek customerCount after:', customerCount);
+    console.log('chek customerCount after:', customerCount);
 
-  //   const query = `
-  //     mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
-  //       metafieldsSet(metafields: $metafields) {
-  //         metafields {
-  //           key
-  //           namespace
-  //           value
-  //           createdAt
-  //           updatedAt
-  //         }
-  //         userErrors {
-  //           field
-  //           message
-  //           code
-  //         }
-  //       }
-  //     }
-  //   `;
+    const query = `
+      mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+        metafieldsSet(metafields: $metafields) {
+          metafields {
+            key
+            namespace
+            value
+            createdAt
+            updatedAt
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `;
 
-  //   const variables = {
-  //     "metafields": [
-  //       {
-  //         "key": "company_customer_count",
-  //         "namespace": "pricing",
-  //         "ownerId": this.shopId,
-  //         "type": "json",
-  //         "value": "{\"Prime Tex\":\"Price CP\",\"Kse Suppliers \":\"Price CP\",\"East Coast\":\"Price CP\",\"Bulk Linen Supply \":\"Price CP\",\"Silver Lining\":\"Price CP\",\"suburban bowery of suffern Inc\":\"Price_A\",\"ProSource\":\"Price_A\",\"Liberty Textile CO\":\"Price_F\",\"Pacific Link\":\"Price_F\",\"Manhattan Hosiery Company\":\"Price_A\",\"Oberlander@ksesuppliers\":\"Price_A\",\"New Dawn Supply\":\"Price CP\",\"Trusted Thread LLC,\":\"Price CP\",\"Centra Clean\":\"Price_A\",\"Prestium Suppliers\":\"Price_F\",\"HY Supplies Inc.\":\"Price_A\",\"American Hospitality Supply\":\"Price_F\",\"Trend Supply\":\"Price_B\"}"
-  //       }
-  //     ]
-  //   };
+    const variables = {
+      "metafields": [
+        {
+          "key": "company_customer_count",
+          "namespace": "pricing",
+          "ownerId": this.shopId,
+          "type": "json",
+          "value": JSON.stringify(customerCount)
+        }
+      ]
+    };
 
-  //   // const response = await axios({
-  //   //   url: this.shopifyApiUrl,
-  //   //   method: 'POST',
-  //   //   headers: {
-  //   //     'Content-Type': 'application/json',
-  //   //     'X-Shopify-Access-Token': this.shopifyAccessToken,
-  //   //   },
-  //   //   data: { query, variables }
-  //   // })
-  // }
+    console.log('chek variables:', variables);
+
+    // const response = await axios({
+    //   url: this.shopifyApiUrl,
+    //   method: 'POST',
+    //   headers: {
+    //     'Content-Type': 'application/json',
+    //     'X-Shopify-Access-Token': this.shopifyAccessToken,
+    //   },
+    //   data: { query, variables }
+    // })
+  }
 
   /** 
    * PRODUCT SERVICES

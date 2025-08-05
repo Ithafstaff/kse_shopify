@@ -173,9 +173,9 @@ export class AppResolver {
 
   @Query(() => GraphQLJSONObject, { nullable: true })
   async getCompanyPriceLevel(): Promise<Record<string, string>> {
-    // console.log('chek fetching company price level');
-    // await this.appService.setCompanyCustomerCount();
-    // console.log('fetched company customer count');
+    console.log('chek fetching company price level');
+    await this.appService.generateCompanyCustomerCount();
+    console.log('fetched company customer count');
     return await this.appService.getCompanyPriceLevel();
   }
 
