@@ -1007,17 +1007,13 @@ export class AppService {
   // Get all draft orders
   async getDraftOrders(): Promise<DraftOrder[]> {
     try {
-      const response = await axios({
-        url: this.shopifyApiUrl,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Shopify-Access-Token': this.shopifyAccessToken,
-        },
-        data: {
-          query: `
-          query {
-            draftOrders(first: 100) {
+      const query = `
+          query GetDraftOrders($first: Int!, $after: String) {
+            draftOrders(first: $first, after: $after) {
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
               edges {
                 node {
                   id
@@ -1060,22 +1056,71 @@ export class AppService {
               }
             }
           }
-        `,
-        },
-      });
+        `;
 
-      // Debugging: Ensure draftOrders are correctly fetched
-      console.log(
-        'Response from Shopify API:',
-        JSON.stringify(response.data, null, 2),
-      );
+      const allEdges: any[] = [];
+      const seenCursors = new Set<string>();
+      let after: string | null = null;
+      let hasNextPage = true;
 
-      if (!response.data.data?.draftOrders?.edges) {
-        throw new Error('Draft orders not found in the API response.');
+      while (hasNextPage) {
+        const response = await axios({
+          url: this.shopifyApiUrl,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': this.shopifyAccessToken,
+          },
+          data: {
+            query,
+            variables: {
+              first: 100,
+              after,
+            },
+          },
+        });
+
+        if (response.data.errors?.length) {
+          throw new Error(
+            response.data.errors
+              .map((error: { message: string }) => error.message)
+              .join('; '),
+          );
+        }
+
+        const draftOrders = response.data.data?.draftOrders;
+
+        if (!draftOrders?.edges) {
+          throw new Error('Draft orders not found in the API response.');
+        }
+
+        allEdges.push(...draftOrders.edges);
+        hasNextPage = draftOrders.pageInfo?.hasNextPage ?? false;
+
+        if (hasNextPage) {
+          const endCursor = draftOrders.pageInfo?.endCursor;
+
+          if (!endCursor) {
+            throw new Error(
+              'Shopify reported another draft-order page without an end cursor.',
+            );
+          }
+
+          if (seenCursors.has(endCursor)) {
+            throw new Error(
+              'Shopify returned a repeated draft-order pagination cursor.',
+            );
+          }
+
+          seenCursors.add(endCursor);
+          after = endCursor;
+        }
       }
 
+      console.log(`Fetched ${allEdges.length} draft orders from Shopify.`);
+
       // Map response data to your DraftOrder format
-      return response.data.data.draftOrders.edges.map((edge) => {
+      return allEdges.map((edge) => {
         const order = edge.node;
         return {
           id: order.id,
