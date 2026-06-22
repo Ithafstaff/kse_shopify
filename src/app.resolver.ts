@@ -4,6 +4,7 @@ import { Product } from './product.model';
 import { User } from './user.model';
 import {
   DraftOrder,
+  DraftOrderPage,
   Metafield,
 } from './draft-order.model';
 import { MetafieldInput } from './dto/metafield.input';
@@ -16,7 +17,7 @@ import { GraphQLJSONObject } from 'graphql-type-json';
 
 @Resolver()
 export class AppResolver {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly appService: AppService) { }
 
   /**
    * Query Resolvers
@@ -116,6 +117,19 @@ export class AppResolver {
     }
 
     return filteredOrders;
+  }
+
+  @Query(() => DraftOrderPage)
+  async getMyOrdersPage(
+    @Args('customerId', { type: () => String }) customerId: string,
+    @Args('after', { type: () => String, nullable: true }) after?: string,
+    @Args('before', { type: () => String, nullable: true }) before?: string,
+  ): Promise<DraftOrderPage> {
+    if (after && before) {
+      throw new Error('Use either an after cursor or a before cursor, not both.');
+    }
+
+    return this.appService.getMyOrdersPage(customerId, after, before);
   }
 
   @Query(() => [DraftOrder], { nullable: true })
@@ -382,12 +396,12 @@ export class AppResolver {
         })),
         shippingAddress: updatedDraftOrder.shippingAddress
           ? {
-              address1: updatedDraftOrder.shippingAddress.address1,
-              city: updatedDraftOrder.shippingAddress.city,
-              province: updatedDraftOrder.shippingAddress.province,
-              country: updatedDraftOrder.shippingAddress.country,
-              zip: updatedDraftOrder.shippingAddress.zip,
-            }
+            address1: updatedDraftOrder.shippingAddress.address1,
+            city: updatedDraftOrder.shippingAddress.city,
+            province: updatedDraftOrder.shippingAddress.province,
+            country: updatedDraftOrder.shippingAddress.country,
+            zip: updatedDraftOrder.shippingAddress.zip,
+          }
           : null,
       };
     } catch (error) {
