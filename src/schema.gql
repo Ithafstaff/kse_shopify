@@ -121,6 +121,18 @@ type DraftOrder {
   tags: [String!]
 }
 
+type DraftOrderPageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+type DraftOrderPage {
+  orders: [DraftOrder!]!
+  pageInfo: DraftOrderPageInfo!
+}
+
 type DraftOrderTag {
   id: String!
   draftOrderId: String!
@@ -143,6 +155,7 @@ type Query {
   isDraftOrderCompleted(id: String!): Boolean!
   getCustomersWithCompanies: [CustomerCompany!]!
   getDraftOrdersByCustomerId(customerId: String!, includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
+  getMyOrdersPage(customerId: String!, after: String, before: String): DraftOrderPage!
   getAllDraftOrdersWithTags(includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
   checkForShippingFee(draftOrderId: String!): String
   getCompanyPriceLevel: JSONObject
