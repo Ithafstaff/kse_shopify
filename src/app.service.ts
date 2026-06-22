@@ -1025,7 +1025,7 @@ export class AppService {
           first: $first
           after: $after
           query: $searchQuery
-          sortKey: CREATED_AT
+          sortKey: NUMBER
           reverse: true
         ) {
           pageInfo {
