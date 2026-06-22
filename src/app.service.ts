@@ -6,7 +6,7 @@ import { ShippingAddressInput } from './dto/shipping-address.input';
 import { MetafieldInput } from './dto/metafield.input';
 import * as nodemailer from 'nodemailer';
 import { DraftOrderTag } from './dto/draft-order-tag.model';
-import { DraftOrder } from './draft-order.model';
+import { DraftOrder, DraftOrderPage } from './draft-order.model';
 import { Address, User } from './user.model';
 import { AddressInput } from './dto/address.input';
 import { title } from 'process';
@@ -397,7 +397,7 @@ export class AppService {
   /** 
    * COMPANY-PRICE LEVEL SERVICES
    */
-  
+
   // Set company and price level in Shopify metafield. Create if not existing.
   async setCompanyPriceLevel(company: string, priceLevel?: string) {
     try {
@@ -426,17 +426,17 @@ export class AppService {
           `,
         },
       })
-      .then((response) => {
-        // Get existing company-priceLevel pairings and replace. Add new company and priceLevel if not existing.
-        const metafield = response.data.data.shop.metafield;
-        if (metafield && metafield.value) {
-          mapping = JSON.parse(metafield.value);
-        }
-        mapping[company] = priceLevel;
-      })
-      .catch((error) => {
-        console.error('Error fetching shop metafield:', error.message);
-      });
+        .then((response) => {
+          // Get existing company-priceLevel pairings and replace. Add new company and priceLevel if not existing.
+          const metafield = response.data.data.shop.metafield;
+          if (metafield && metafield.value) {
+            mapping = JSON.parse(metafield.value);
+          }
+          mapping[company] = priceLevel;
+        })
+        .catch((error) => {
+          console.error('Error fetching shop metafield:', error.message);
+        });
 
       // Check for unlisted companies from all customers and add if not listed
       await this.getCustomers().then((data) => {
@@ -603,7 +603,7 @@ export class AppService {
    */
   async generateCompanyCustomerCount() {
     let customerCount = {};
-      
+
     // Grab all existing companies from company price level metafield
     const initialCompanies = await this.getCompanyPriceLevel().then((data) => {
       return Object.keys(data);
@@ -836,15 +836,15 @@ export class AppService {
             : `gid://shopify/ProductVariant/${item.variantId}`,
           ...(hasDiscount
             ? {
-                appliedDiscount: {
-                  value: (
-                    (item.originalPrice - item.originalUnitPrice) /
-                    100
-                  ).toFixed(2),
-                  valueType: 'FIXED_AMOUNT',
-                  description: 'Custom pricing applied',
-                },
-              }
+              appliedDiscount: {
+                value: (
+                  (item.originalPrice - item.originalUnitPrice) /
+                  100
+                ).toFixed(2),
+                valueType: 'FIXED_AMOUNT',
+                description: 'Custom pricing applied',
+              },
+            }
             : {}),
         };
       });
@@ -857,26 +857,25 @@ export class AppService {
           note: "${safeNote}",
           lineItems: [
             ${reformattedLineItems
-              .map(
-                (item) => `
+          .map(
+            (item) => `
               {
                 variantId: "${item.variantId}",
                 quantity: ${item.quantity},
-                ${
-                  item.appliedDiscount
-                    ? `
+                ${item.appliedDiscount
+                ? `
                   appliedDiscount: {
                     value: ${item.appliedDiscount.value},
                     valueType: ${item.appliedDiscount.valueType},
                     description: "${this.escapeGraphQLString(item.appliedDiscount.description)}"
                   }`
-                    : ''
-                }
+                : ''
+              }
                 title: "${this.escapeGraphQLString(item.title || '')}"
               }
             `,
-              )
-              .join(',')}
+          )
+          .join(',')}
           ],
           shippingAddress: {
             address1: "${this.escapeGraphQLString(shippingAddress.address1)}",
@@ -887,8 +886,8 @@ export class AppService {
           },
           metafields: [
             ${metafields
-              .map(
-                (metafield) => `
+          .map(
+            (metafield) => `
               {
                 namespace: "${this.escapeGraphQLString(metafield.namespace)}",
                 key: "${this.escapeGraphQLString(metafield.key)}",
@@ -896,8 +895,8 @@ export class AppService {
                 type: "${this.escapeGraphQLString(metafield.type)}"
               }
             `,
-              )
-              .join(',')}
+          )
+          .join(',')}
           ]
         }) {
           draftOrder {
@@ -1004,50 +1003,65 @@ export class AppService {
     }
   }
 
-  // Get all draft orders
-  async getDraftOrders(): Promise<DraftOrder[]> {
-    try {
-      const query = `
-          query GetDraftOrders($first: Int!, $after: String) {
-            draftOrders(first: $first, after: $after) {
-              pageInfo {
-                hasNextPage
-                endCursor
+  async getDraftOrdersPageByCustomerId(
+    customerId: string,
+    first = 10,
+    after?: string,
+  ): Promise<DraftOrderPage> {
+    const numericCustomerId = customerId.split('/').pop();
+
+    if (!numericCustomerId || !/^\d+$/.test(numericCustomerId)) {
+      throw new Error('Invalid Shopify customer ID.');
+    }
+
+    const pageSize = Math.min(Math.max(first, 1), 10);
+    const query = `
+      query GetDraftOrdersPage(
+        $first: Int!
+        $after: String
+        $searchQuery: String!
+      ) {
+        draftOrders(
+          first: $first
+          after: $after
+          query: $searchQuery
+          sortKey: CREATED_AT
+          reverse: true
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            node {
+              id
+              name
+              createdAt
+              customer { id }
+              tags
+              shippingAddress {
+                address1
+                city
+                province
+                country
+                zip
               }
-              edges {
-                node {
-                  id
-                  name
-                  createdAt
-                  customer {
-                    id
-                  }
-                  tags
-                  shippingAddress {
-                    address1
-                    city
-                    province
-                    country
-                    zip
-                  }
-                  lineItems(first: 10) {
-                    edges {
-                      node {
-                        title
-                        quantity
-                        appliedDiscount {
+              lineItems(first: 10) {
+                edges {
+                  node {
+                    title
+                    quantity
+                    appliedDiscount {
+                      value
+                      valueType
+                    }
+                    variant {
+                      title
+                      price
+                      metafields(first: 5) {
+                        nodes {
+                          key
                           value
-                          valueType
-                        }
-                        variant {
-                          title
-                          price
-                          metafields(first: 5) {
-                            nodes {
-                              key
-                              value
-                            }
-                          }
                         }
                       }
                     }
@@ -1056,7 +1070,151 @@ export class AppService {
               }
             }
           }
-        `;
+        }
+      }
+    `;
+
+    try {
+      const response = await axios({
+        url: this.shopifyApiUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': this.shopifyAccessToken,
+        },
+        data: {
+          query,
+          variables: {
+            first: pageSize,
+            after: after || null,
+            searchQuery: `customer_id:${numericCustomerId} tag:Placed`,
+          },
+        },
+      });
+
+      if (response.data.errors?.length) {
+        throw new Error(
+          response.data.errors
+            .map((error: { message: string }) => error.message)
+            .join('; '),
+        );
+      }
+
+      const connection = response.data.data?.draftOrders;
+
+      if (!connection?.edges || !connection?.pageInfo) {
+        throw new Error('Draft-order page not found in the API response.');
+      }
+
+      const orders = connection.edges.map((edge) => {
+        const order = edge.node;
+
+        return {
+          id: order.id,
+          name: order.name,
+          createdAt: order.createdAt,
+          customer: order.customer ? { id: order.customer.id } : null,
+          tags: order.tags || [],
+          shippingAddress: order.shippingAddress
+            ? {
+                address1: order.shippingAddress.address1,
+                city: order.shippingAddress.city,
+                province: order.shippingAddress.province,
+                country: order.shippingAddress.country,
+                zip: order.shippingAddress.zip,
+              }
+            : null,
+          lineItems:
+            order.lineItems?.edges.map((lineItemEdge) => ({
+              title: lineItemEdge.node.title,
+              quantity: lineItemEdge.node.quantity,
+              appliedDiscount: lineItemEdge.node.appliedDiscount
+                ? {
+                    value: lineItemEdge.node.appliedDiscount.value,
+                    valueType: lineItemEdge.node.appliedDiscount.valueType,
+                  }
+                : null,
+              variant: lineItemEdge.node.variant
+                ? {
+                    title: lineItemEdge.node.variant.title,
+                    price: lineItemEdge.node.variant.price,
+                    metafields:
+                      lineItemEdge.node.variant.metafields?.nodes || [],
+                  }
+                : null,
+            })) || [],
+        };
+      });
+
+      return {
+        orders,
+        pageInfo: {
+          hasNextPage: connection.pageInfo.hasNextPage,
+          endCursor: connection.pageInfo.endCursor || null,
+        },
+      };
+    } catch (error) {
+      console.error(
+        'Error fetching customer draft-order page:',
+        error.response?.data || error.message,
+      );
+      throw new Error('Failed to fetch customer draft-order page.');
+    }
+  }
+
+  // Get all draft orders
+  async getDraftOrders(): Promise<DraftOrder[]> {
+    try {
+      const query = `
+      query GetDraftOrders($first: Int!, $after: String) {
+        draftOrders(first: $first, after: $after) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            node {
+              id
+              name
+              createdAt
+              customer {
+                id
+              }
+              tags
+              shippingAddress {
+                address1
+                city
+                province
+                country
+                zip
+              }
+              lineItems(first: 10) {
+                edges {
+                  node {
+                    title
+                    quantity
+                    appliedDiscount {
+                      value
+                      valueType
+                    }
+                    variant {
+                      title
+                      price
+                      metafields(first: 5) {
+                        nodes {
+                          key
+                          value
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
 
       const allEdges: any[] = [];
       const seenCursors = new Set<string>();
@@ -1095,6 +1253,7 @@ export class AppService {
         }
 
         allEdges.push(...draftOrders.edges);
+
         hasNextPage = draftOrders.pageInfo?.hasNextPage ?? false;
 
         if (hasNextPage) {
@@ -1119,23 +1278,23 @@ export class AppService {
 
       console.log(`Fetched ${allEdges.length} draft orders from Shopify.`);
 
-      // Map response data to your DraftOrder format
       return allEdges.map((edge) => {
         const order = edge.node;
+
         return {
           id: order.id,
           name: order.name,
           createdAt: order.createdAt,
           customer: order.customer ? { id: order.customer.id } : null,
-          tags: order.tags || [], // Ensure tags is an array
+          tags: order.tags || [],
           shippingAddress: order.shippingAddress
             ? {
-                address1: order.shippingAddress.address1,
-                city: order.shippingAddress.city,
-                province: order.shippingAddress.province,
-                country: order.shippingAddress.country,
-                zip: order.shippingAddress.zip,
-              }
+              address1: order.shippingAddress.address1,
+              city: order.shippingAddress.city,
+              province: order.shippingAddress.province,
+              country: order.shippingAddress.country,
+              zip: order.shippingAddress.zip,
+            }
             : null,
           lineItems:
             order.lineItems?.edges.map((lineItemEdge) => ({
@@ -1143,17 +1302,17 @@ export class AppService {
               quantity: lineItemEdge.node.quantity,
               appliedDiscount: lineItemEdge.node.appliedDiscount
                 ? {
-                    value: lineItemEdge.node.appliedDiscount.value,
-                    valueType: lineItemEdge.node.appliedDiscount.valueType,
-                  }
+                  value: lineItemEdge.node.appliedDiscount.value,
+                  valueType: lineItemEdge.node.appliedDiscount.valueType,
+                }
                 : null,
               variant: lineItemEdge.node.variant
                 ? {
-                    title: lineItemEdge.node.variant.title,
-                    price: lineItemEdge.node.variant.price,
-                    metafields:
-                      lineItemEdge.node.variant.metafields?.nodes || [],
-                  }
+                  title: lineItemEdge.node.variant.title,
+                  price: lineItemEdge.node.variant.price,
+                  metafields:
+                    lineItemEdge.node.variant.metafields?.nodes || [],
+                }
                 : null,
             })) || [],
         };
@@ -1239,9 +1398,9 @@ export class AppService {
           quantity: edge.node.quantity,
           appliedDiscount: edge.node.appliedDiscount
             ? {
-                value: edge.node.appliedDiscount.value,
-                valueType: edge.node.appliedDiscount.valueType,
-              }
+              value: edge.node.appliedDiscount.value,
+              valueType: edge.node.appliedDiscount.valueType,
+            }
             : null,
           variant: {
             title: edge.node.variant?.title,
@@ -1276,7 +1435,7 @@ export class AppService {
 
     return response.data.draft_order;
   }
-                          
+
   // Get tags of a draft order
   async getDraftOrderTags(draftOrderId: string): Promise<DraftOrderTag[]> {
     try {

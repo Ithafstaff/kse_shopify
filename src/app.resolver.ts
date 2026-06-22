@@ -1,9 +1,10 @@
-import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { AppService } from './app.service';
 import { Product } from './product.model';
 import { User } from './user.model';
 import {
   DraftOrder,
+  DraftOrderPage,
   Metafield,
 } from './draft-order.model';
 import { MetafieldInput } from './dto/metafield.input';
@@ -116,6 +117,19 @@ export class AppResolver {
     }
 
     return filteredOrders;
+  }
+
+  @Query(() => DraftOrderPage)
+  async getDraftOrdersPageByCustomerId(
+    @Args('customerId', { type: () => String }) customerId: string,
+    @Args('first', { type: () => Int, defaultValue: 10 }) first: number,
+    @Args('after', { type: () => String, nullable: true }) after?: string,
+  ): Promise<DraftOrderPage> {
+    return this.appService.getDraftOrdersPageByCustomerId(
+      customerId,
+      first,
+      after,
+    );
   }
 
   @Query(() => [DraftOrder], { nullable: true })

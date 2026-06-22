@@ -205,3 +205,21 @@ export class DraftOrder {
   @Field(() => [String], { nullable: true })
   tags?: string[];
 }
+
+@ObjectType()
+export class DraftOrderPageInfo {
+  @Field()
+  hasNextPage: boolean;
+
+  @Field({ nullable: true })
+  endCursor?: string;
+}
+
+@ObjectType()
+export class DraftOrderPage {
+  @Field(() => [DraftOrder])
+  orders: DraftOrder[];
+
+  @Field(() => DraftOrderPageInfo)
+  pageInfo: DraftOrderPageInfo;
+}
