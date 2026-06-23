@@ -154,6 +154,7 @@ type Query {
   getCustomersWithCompanies: [CustomerCompany!]!
   getDraftOrdersByCustomerId(customerId: String!, includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
   getDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
+  getSavedDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
   getAllDraftOrdersWithTags(includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
   checkForShippingFee(draftOrderId: String!): String
   getCompanyPriceLevel: JSONObject

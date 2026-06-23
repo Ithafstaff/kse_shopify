@@ -1162,6 +1162,165 @@ export class AppService {
     }
   }
 
+  async getSavedDraftOrdersPageByCustomerId(
+    customerId: string,
+    first = 10,
+    after?: string,
+  ): Promise<DraftOrderPage> {
+    const numericCustomerId = customerId.split('/').pop();
+
+    if (!numericCustomerId || !/^\d+$/.test(numericCustomerId)) {
+      throw new Error('Invalid Shopify customer ID.');
+    }
+
+    const pageSize = Math.min(Math.max(first, 1), 10);
+    const query = `
+      query GetSavedDraftOrdersPage(
+        $first: Int!
+        $after: String
+        $searchQuery: String!
+      ) {
+        draftOrders(
+          first: $first
+          after: $after
+          query: $searchQuery
+          sortKey: NUMBER
+          reverse: true
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            node {
+              id
+              name
+              createdAt
+              customer { id }
+              tags
+              shippingAddress {
+                address1
+                city
+                province
+                country
+                zip
+              }
+              lineItems(first: 10) {
+                edges {
+                  node {
+                    title
+                    quantity
+                    appliedDiscount {
+                      value
+                      valueType
+                    }
+                    variant {
+                      title
+                      price
+                      metafields(first: 5) {
+                        nodes {
+                          key
+                          value
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await axios({
+        url: this.shopifyApiUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': this.shopifyAccessToken,
+        },
+        data: {
+          query,
+          variables: {
+            first: pageSize,
+            after: after || null,
+            searchQuery: `customer_id:${numericCustomerId} -tag:Placed -tag:ShipRequested`,
+          },
+        },
+      });
+
+      if (response.data.errors?.length) {
+        throw new Error(
+          response.data.errors
+            .map((error: { message: string }) => error.message)
+            .join('; '),
+        );
+      }
+
+      const connection = response.data.data?.draftOrders;
+
+      if (!connection?.edges || !connection?.pageInfo) {
+        throw new Error('Saved draft-order page not found in the API response.');
+      }
+
+      const orders = connection.edges.map((edge) => {
+        const order = edge.node;
+
+        return {
+          id: order.id,
+          name: order.name,
+          createdAt: order.createdAt,
+          customer: order.customer ? { id: order.customer.id } : null,
+          tags: order.tags || [],
+          shippingAddress: order.shippingAddress
+            ? {
+                address1: order.shippingAddress.address1,
+                city: order.shippingAddress.city,
+                province: order.shippingAddress.province,
+                country: order.shippingAddress.country,
+                zip: order.shippingAddress.zip,
+              }
+            : null,
+          lineItems:
+            order.lineItems?.edges.map((lineItemEdge) => ({
+              title: lineItemEdge.node.title,
+              quantity: lineItemEdge.node.quantity,
+              appliedDiscount: lineItemEdge.node.appliedDiscount
+                ? {
+                    value: lineItemEdge.node.appliedDiscount.value,
+                    valueType: lineItemEdge.node.appliedDiscount.valueType,
+                  }
+                : null,
+              variant: lineItemEdge.node.variant
+                ? {
+                    title: lineItemEdge.node.variant.title,
+                    price: lineItemEdge.node.variant.price,
+                    metafields:
+                      lineItemEdge.node.variant.metafields?.nodes || [],
+                  }
+                : null,
+            })) || [],
+        };
+      });
+
+      return {
+        orders,
+        pageInfo: {
+          hasNextPage: connection.pageInfo.hasNextPage,
+          endCursor: connection.pageInfo.endCursor || null,
+        },
+      };
+    } catch (error) {
+      console.error(
+        'Error fetching saved draft-order page:',
+        error.response?.data || error.message,
+      );
+      throw new Error('Failed to fetch saved draft-order page.');
+    }
+  }
+
   // Get all draft orders
   async getDraftOrders(): Promise<DraftOrder[]> {
     try {

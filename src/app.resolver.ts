@@ -132,6 +132,19 @@ export class AppResolver {
     );
   }
 
+  @Query(() => DraftOrderPage)
+  async getSavedDraftOrdersPageByCustomerId(
+    @Args('customerId', { type: () => String }) customerId: string,
+    @Args('first', { type: () => Int, defaultValue: 10 }) first: number,
+    @Args('after', { type: () => String, nullable: true }) after?: string,
+  ): Promise<DraftOrderPage> {
+    return this.appService.getSavedDraftOrdersPageByCustomerId(
+      customerId,
+      first,
+      after,
+    );
+  }
+
   @Query(() => [DraftOrder], { nullable: true })
   async getAllDraftOrdersWithTags(
     @Args('includeTags', { type: () => [String], nullable: true })
