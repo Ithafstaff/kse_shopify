@@ -17,7 +17,7 @@ import { GraphQLJSONObject } from 'graphql-type-json';
 
 @Resolver()
 export class AppResolver {
-  constructor(private readonly appService: AppService) {}
+  constructor(private readonly appService: AppService) { }
 
   /**
    * Query Resolvers
@@ -157,12 +157,11 @@ export class AppResolver {
     let filteredOrders = allDraftOrders;
 
     if (includeTags?.length > 0) {
-      const includeSet = new Set(includeTags);
       filteredOrders = filteredOrders.filter(
         (order) =>
           order.tags &&
           order.tags.length > 0 &&
-          includeTags.every((tag) => (order.tags || []).includes(tag)),
+          includeTags.every((tag) => this.orderHasIncludeTag(order.tags, tag)),
       );
     }
 
@@ -174,6 +173,36 @@ export class AppResolver {
     }
 
     return filteredOrders;
+  }
+
+  private orderHasIncludeTag(orderTags: string[] = [], includeTag: string) {
+    if (!includeTag.startsWith('company:')) {
+      return orderTags.includes(includeTag);
+    }
+
+    const requestedCompany = includeTag.replace('company:', '').trim();
+    const normalizedRequestedCompany =
+      this.normalizeCompanyNameForTagMatch(requestedCompany);
+
+    return orderTags.some((orderTag) => {
+      if (!orderTag.startsWith('company:')) {
+        return false;
+      }
+
+      const orderCompany = orderTag.replace('company:', '').trim();
+      const normalizedOrderCompany =
+        this.normalizeCompanyNameForTagMatch(orderCompany);
+
+      return (
+        normalizedOrderCompany === normalizedRequestedCompany ||
+        normalizedOrderCompany.includes(normalizedRequestedCompany) ||
+        normalizedRequestedCompany.includes(normalizedOrderCompany)
+      );
+    });
+  }
+
+  private normalizeCompanyNameForTagMatch(company: string) {
+    return company.toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
   @Query(() => String, { nullable: true }) // Adjust to return a nullable string
@@ -409,12 +438,12 @@ export class AppResolver {
         })),
         shippingAddress: updatedDraftOrder.shippingAddress
           ? {
-              address1: updatedDraftOrder.shippingAddress.address1,
-              city: updatedDraftOrder.shippingAddress.city,
-              province: updatedDraftOrder.shippingAddress.province,
-              country: updatedDraftOrder.shippingAddress.country,
-              zip: updatedDraftOrder.shippingAddress.zip,
-            }
+            address1: updatedDraftOrder.shippingAddress.address1,
+            city: updatedDraftOrder.shippingAddress.city,
+            province: updatedDraftOrder.shippingAddress.province,
+            country: updatedDraftOrder.shippingAddress.country,
+            zip: updatedDraftOrder.shippingAddress.zip,
+          }
           : null,
       };
     } catch (error) {
