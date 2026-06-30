@@ -3,6 +3,7 @@ import { AppService } from './app.service';
 import { Product } from './product.model';
 import { User } from './user.model';
 import {
+  CompanyDraftOrderPage,
   DraftOrder,
   DraftOrderPage,
   Metafield,
@@ -143,6 +144,15 @@ export class AppResolver {
       first,
       after,
     );
+  }
+
+  @Query(() => CompanyDraftOrderPage)
+  async getCompanyDraftOrdersPage(
+    @Args('company', { type: () => String }) company: string,
+    @Args('first', { type: () => Int, defaultValue: 10 }) first: number,
+    @Args('after', { type: () => String, nullable: true }) after?: string,
+  ): Promise<CompanyDraftOrderPage> {
+    return this.appService.getCompanyDraftOrdersPage(company, first, after);
   }
 
   @Query(() => [DraftOrder], { nullable: true })

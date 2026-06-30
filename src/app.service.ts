@@ -6,7 +6,11 @@ import { ShippingAddressInput } from './dto/shipping-address.input';
 import { MetafieldInput } from './dto/metafield.input';
 import * as nodemailer from 'nodemailer';
 import { DraftOrderTag } from './dto/draft-order-tag.model';
-import { DraftOrder, DraftOrderPage } from './draft-order.model';
+import {
+  CompanyDraftOrderPage,
+  DraftOrder,
+  DraftOrderPage,
+} from './draft-order.model';
 import { Address, User } from './user.model';
 import { AddressInput } from './dto/address.input';
 import { title } from 'process';
@@ -29,6 +33,57 @@ export class AppService {
     this.shopifyRestUrl2 = this.configService.get<string>(
       'SHOPIFY_REST_API_URL_2',
     );
+  }
+
+  private encodeCompanyOrderCursor(lastConsumedEdgeCursor: string): string {
+    return Buffer.from(
+      JSON.stringify({ version: 1, lastConsumedEdgeCursor }),
+      'utf8',
+    ).toString('base64url');
+  }
+
+  private decodeCompanyOrderCursor(cursor?: string): string | null {
+    if (!cursor) return null;
+
+    try {
+      const payload = JSON.parse(
+        Buffer.from(cursor, 'base64url').toString('utf8'),
+      );
+
+      if (
+        payload?.version !== 1 ||
+        typeof payload.lastConsumedEdgeCursor !== 'string' ||
+        payload.lastConsumedEdgeCursor.length === 0
+      ) {
+        throw new Error('Invalid company order cursor.');
+      }
+
+      return payload.lastConsumedEdgeCursor;
+    } catch {
+      throw new Error('Invalid company order cursor.');
+    }
+  }
+
+  private normalizeCompanyName(company: string): string {
+    return company.toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  private orderMatchesCompany(tags: string[] = [], company: string): boolean {
+    const requestedCompany = this.normalizeCompanyName(company);
+
+    return tags.some((tag) => {
+      if (!tag.startsWith('company:')) return false;
+
+      const orderCompany = this.normalizeCompanyName(
+        tag.replace('company:', '').trim(),
+      );
+
+      return (
+        orderCompany === requestedCompany ||
+        orderCompany.includes(requestedCompany) ||
+        requestedCompany.includes(orderCompany)
+      );
+    });
   }
 
   escapeGraphQLString(str: string): string {
@@ -1318,6 +1373,212 @@ export class AppService {
         error.response?.data || error.message,
       );
       throw new Error('Failed to fetch saved draft-order page.');
+    }
+  }
+
+  async getCompanyDraftOrdersPage(
+    company: string,
+    first = 10,
+    after?: string,
+  ): Promise<CompanyDraftOrderPage> {
+    const requestedCompany = company?.trim();
+
+    if (!requestedCompany || !this.normalizeCompanyName(requestedCompany)) {
+      throw new Error('Company is required.');
+    }
+
+    const pageSize = Math.min(Math.max(first, 1), 10);
+    let shopifyAfter = this.decodeCompanyOrderCursor(after);
+    let lastConsumedEdgeCursor = shopifyAfter;
+    let hasMoreOrders = false;
+    let scanning = true;
+    const orders: DraftOrder[] = [];
+    const seenCursors = new Set<string>();
+
+    const query = `
+      query GetCompanyDraftOrdersPage(
+        $first: Int!
+        $after: String
+        $searchQuery: String!
+      ) {
+        draftOrders(
+          first: $first
+          after: $after
+          query: $searchQuery
+          sortKey: NUMBER
+          reverse: true
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            cursor
+            node {
+              id
+              name
+              createdAt
+              customer { id }
+              tags
+              shippingAddress {
+                address1
+                city
+                province
+                country
+                zip
+                company
+              }
+              shippingLine {
+                title
+                price
+              }
+              lineItems(first: 10) {
+                edges {
+                  node {
+                    title
+                    quantity
+                    appliedDiscount {
+                      value
+                      valueType
+                    }
+                    variant {
+                      title
+                      price
+                      metafields(first: 5) {
+                        nodes {
+                          key
+                          value
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      while (scanning) {
+        const response = await axios({
+          url: this.shopifyApiUrl,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': this.shopifyAccessToken,
+          },
+          data: {
+            query,
+            variables: {
+              first: 50,
+              after: shopifyAfter,
+              searchQuery: 'tag:Placed',
+            },
+          },
+        });
+
+        if (response.data.errors?.length) {
+          throw new Error(
+            response.data.errors
+              .map((error: { message: string }) => error.message)
+              .join('; '),
+          );
+        }
+
+        const connection = response.data.data?.draftOrders;
+
+        if (!connection?.edges || !connection?.pageInfo) {
+          throw new Error(
+            'Company draft-order page not found in the API response.',
+          );
+        }
+
+        for (let index = 0; index < connection.edges.length; index += 1) {
+          const edge = connection.edges[index];
+
+          if (!edge.cursor || seenCursors.has(edge.cursor)) {
+            throw new Error('Shopify returned an invalid draft-order cursor.');
+          }
+
+          seenCursors.add(edge.cursor);
+          lastConsumedEdgeCursor = edge.cursor;
+          const order = edge.node;
+
+          if (this.orderMatchesCompany(order.tags || [], requestedCompany)) {
+            orders.push({
+              id: order.id,
+              name: order.name,
+              createdAt: order.createdAt,
+              customer: order.customer ? { id: order.customer.id } : null,
+              tags: order.tags || [],
+              shippingAddress: order.shippingAddress || null,
+              shippingLine: order.shippingLine
+                ? {
+                    title: order.shippingLine.title,
+                    price: Number(order.shippingLine.price) || 0,
+                  }
+                : null,
+              lineItems:
+                order.lineItems?.edges.map((lineItemEdge) => ({
+                  title: lineItemEdge.node.title,
+                  quantity: lineItemEdge.node.quantity,
+                  appliedDiscount: lineItemEdge.node.appliedDiscount || null,
+                  variant: lineItemEdge.node.variant
+                    ? {
+                        title: lineItemEdge.node.variant.title,
+                        price: lineItemEdge.node.variant.price,
+                        metafields:
+                          lineItemEdge.node.variant.metafields?.nodes || [],
+                      }
+                    : null,
+                })) || [],
+            });
+          }
+
+          if (orders.length === pageSize) {
+            hasMoreOrders =
+              index < connection.edges.length - 1 ||
+              connection.pageInfo.hasNextPage;
+            scanning = false;
+            break;
+          }
+        }
+
+        if (!scanning) break;
+
+        if (!connection.pageInfo.hasNextPage) {
+          hasMoreOrders = false;
+          break;
+        }
+
+        const endCursor = connection.pageInfo.endCursor;
+        if (!endCursor || endCursor === shopifyAfter) {
+          throw new Error(
+            'Shopify reported another draft-order page without a new cursor.',
+          );
+        }
+
+        shopifyAfter = endCursor;
+      }
+
+      return {
+        orders,
+        pageInfo: {
+          hasNextPage: hasMoreOrders,
+          endCursor:
+            hasMoreOrders && lastConsumedEdgeCursor
+              ? this.encodeCompanyOrderCursor(lastConsumedEdgeCursor)
+              : null,
+        },
+      };
+    } catch (error) {
+      console.error(
+        'Error fetching company draft-order page:',
+        error.response?.data || error.message,
+      );
+      throw new Error('Failed to fetch company draft-order page.');
     }
   }
 

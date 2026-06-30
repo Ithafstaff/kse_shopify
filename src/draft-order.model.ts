@@ -42,23 +42,26 @@ export class Money {
 
 @ObjectType()
 export class ShippingLine {
-  @Field()
-  id: string;
+  @Field({ nullable: true })
+  id?: string;
 
-  @Field()
-  title: string;
+  @Field({ nullable: true })
+  title?: string;
 
   @Field({ nullable: true })
   carrierIdentifier?: string;
 
-  @Field()
-  custom: boolean;
+  @Field({ nullable: true })
+  custom?: boolean;
 
-  @Field()
-  code: string;
+  @Field({ nullable: true })
+  code?: string;
 
   @Field({ nullable: true })
   deliveryCategory?: string;
+
+  @Field({ nullable: true })
+  price?: number;
 }
 
 @ObjectType()
@@ -222,4 +225,22 @@ export class DraftOrderPage {
 
   @Field(() => DraftOrderPageInfo)
   pageInfo: DraftOrderPageInfo;
+}
+
+@ObjectType()
+export class CompanyDraftOrderPageInfo {
+  @Field()
+  hasNextPage: boolean;
+
+  @Field({ nullable: true })
+  endCursor?: string;
+}
+
+@ObjectType()
+export class CompanyDraftOrderPage {
+  @Field(() => [DraftOrder])
+  orders: DraftOrder[];
+
+  @Field(() => CompanyDraftOrderPageInfo)
+  pageInfo: CompanyDraftOrderPageInfo;
 }

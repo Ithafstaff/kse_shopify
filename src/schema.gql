@@ -52,12 +52,13 @@ type TaxLine {
 }
 
 type ShippingLine {
-  id: String!
-  title: String!
+  id: String
+  title: String
   carrierIdentifier: String
-  custom: Boolean!
-  code: String!
+  custom: Boolean
+  code: String
   deliveryCategory: String
+  price: Float
 }
 
 type Variant {
@@ -131,6 +132,16 @@ type DraftOrderPageInfo {
   endCursor: String
 }
 
+type CompanyDraftOrderPage {
+  orders: [DraftOrder!]!
+  pageInfo: CompanyDraftOrderPageInfo!
+}
+
+type CompanyDraftOrderPageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
 type DraftOrderTag {
   id: String!
   draftOrderId: String!
@@ -155,6 +166,7 @@ type Query {
   getDraftOrdersByCustomerId(customerId: String!, includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
   getDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
   getSavedDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
+  getCompanyDraftOrdersPage(company: String!, first: Int! = 10, after: String): CompanyDraftOrderPage!
   getAllDraftOrdersWithTags(includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
   checkForShippingFee(draftOrderId: String!): String
   getCompanyPriceLevel: JSONObject
