@@ -52,12 +52,13 @@ type TaxLine {
 }
 
 type ShippingLine {
-  id: String!
-  title: String!
+  id: String
+  title: String
   carrierIdentifier: String
-  custom: Boolean!
-  code: String!
+  custom: Boolean
+  code: String
   deliveryCategory: String
+  price: Float
 }
 
 type Variant {
@@ -121,16 +122,24 @@ type DraftOrder {
   tags: [String!]
 }
 
-type DraftOrderPageInfo {
-  hasNextPage: Boolean!
-  hasPreviousPage: Boolean!
-  startCursor: String
-  endCursor: String
-}
-
 type DraftOrderPage {
   orders: [DraftOrder!]!
   pageInfo: DraftOrderPageInfo!
+}
+
+type DraftOrderPageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type CompanyDraftOrderPage {
+  orders: [DraftOrder!]!
+  pageInfo: CompanyDraftOrderPageInfo!
+}
+
+type CompanyDraftOrderPageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
 }
 
 type DraftOrderTag {
@@ -155,7 +164,9 @@ type Query {
   isDraftOrderCompleted(id: String!): Boolean!
   getCustomersWithCompanies: [CustomerCompany!]!
   getDraftOrdersByCustomerId(customerId: String!, includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
-  getMyOrdersPage(customerId: String!, after: String, before: String): DraftOrderPage!
+  getDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
+  getSavedDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
+  getCompanyDraftOrdersPage(company: String!, first: Int! = 10, after: String): CompanyDraftOrderPage!
   getAllDraftOrdersWithTags(includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
   checkForShippingFee(draftOrderId: String!): String
   getCompanyPriceLevel: JSONObject
