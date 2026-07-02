@@ -85,7 +85,7 @@ export class AppliedDiscount {
   value: number;
 
   @Field()
-  valueType: string; 
+  valueType: string;
 }
 
 
@@ -106,7 +106,7 @@ export class LineItem {
   @Field(() => Variant, { nullable: true })
   variant?: Variant;
 
-  @Field(() => AppliedDiscount, { nullable: true }) 
+  @Field(() => AppliedDiscount, { nullable: true })
   appliedDiscount?: AppliedDiscount;
 
   @Field({ nullable: true })
@@ -155,7 +155,7 @@ export class Customer {
   @Field(() => [String], { nullable: true })
   tags?: string[];
 
-  @Field(() => [CompanyContactProfiles], { nullable: true }) 
+  @Field(() => [CompanyContactProfiles], { nullable: true })
   companyContactProfiles?: CompanyContactProfiles[];
 }
 
@@ -213,6 +213,12 @@ export class DraftOrder {
 export class DraftOrderPageInfo {
   @Field()
   hasNextPage: boolean;
+
+  @Field()
+  hasPreviousPage: boolean;
+
+  @Field({ nullable: true })
+  startCursor?: string;
 
   @Field({ nullable: true })
   endCursor?: string;

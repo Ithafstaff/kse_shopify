@@ -1331,12 +1331,12 @@ export class AppService {
           tags: order.tags || [],
           shippingAddress: order.shippingAddress
             ? {
-                address1: order.shippingAddress.address1,
-                city: order.shippingAddress.city,
-                province: order.shippingAddress.province,
-                country: order.shippingAddress.country,
-                zip: order.shippingAddress.zip,
-              }
+              address1: order.shippingAddress.address1,
+              city: order.shippingAddress.city,
+              province: order.shippingAddress.province,
+              country: order.shippingAddress.country,
+              zip: order.shippingAddress.zip,
+            }
             : null,
           lineItems:
             order.lineItems?.edges.map((lineItemEdge) => ({
@@ -1344,17 +1344,17 @@ export class AppService {
               quantity: lineItemEdge.node.quantity,
               appliedDiscount: lineItemEdge.node.appliedDiscount
                 ? {
-                    value: lineItemEdge.node.appliedDiscount.value,
-                    valueType: lineItemEdge.node.appliedDiscount.valueType,
-                  }
+                  value: lineItemEdge.node.appliedDiscount.value,
+                  valueType: lineItemEdge.node.appliedDiscount.valueType,
+                }
                 : null,
               variant: lineItemEdge.node.variant
                 ? {
-                    title: lineItemEdge.node.variant.title,
-                    price: lineItemEdge.node.variant.price,
-                    metafields:
-                      lineItemEdge.node.variant.metafields?.nodes || [],
-                  }
+                  title: lineItemEdge.node.variant.title,
+                  price: lineItemEdge.node.variant.price,
+                  metafields:
+                    lineItemEdge.node.variant.metafields?.nodes || [],
+                }
                 : null,
             })) || [],
         };
@@ -1740,6 +1740,167 @@ export class AppService {
     } catch (error) {
       console.error('Error fetching draft orders:', error.message || error);
       throw new Error('Failed to fetch draft orders.');
+    }
+  }
+
+  async getMyOrdersPage(
+    customerId: string,
+    after?: string,
+    before?: string,
+  ): Promise<DraftOrderPage> {
+    try {
+      const numericCustomerId = customerId
+        .replace('gid://shopify/Customer/', '')
+        .trim();
+
+      if (!/^\d+$/.test(numericCustomerId)) {
+        throw new Error('A valid Shopify customer ID is required.');
+      }
+
+      const query = `
+        query GetMyOrdersPage(
+          $first: Int
+          $after: String
+          $last: Int
+          $before: String
+          $searchQuery: String!
+        ) {
+          draftOrders(
+            first: $first
+            after: $after
+            last: $last
+            before: $before
+            query: $searchQuery
+            sortKey: CREATED_AT
+            reverse: true
+          ) {
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            edges {
+              node {
+                id
+                name
+                createdAt
+                customer {
+                  id
+                }
+                tags
+                shippingAddress {
+                  address1
+                  city
+                  province
+                  country
+                  zip
+                }
+                lineItems(first: 10) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      appliedDiscount {
+                        value
+                        valueType
+                      }
+                      variant {
+                        title
+                        price
+                        metafields(first: 5) {
+                          nodes {
+                            key
+                            value
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const isPreviousPageRequest = Boolean(before);
+      const response = await axios({
+        url: this.shopifyApiUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': this.shopifyAccessToken,
+        },
+        data: {
+          query,
+          variables: {
+            first: isPreviousPageRequest ? null : 10,
+            after: isPreviousPageRequest ? null : after || null,
+            last: isPreviousPageRequest ? 10 : null,
+            before: isPreviousPageRequest ? before : null,
+            searchQuery: `customer_id:${numericCustomerId} tag:Placed`,
+          },
+        },
+      });
+
+      if (response.data.errors?.length) {
+        throw new Error(
+          response.data.errors
+            .map((error: { message: string }) => error.message)
+            .join('; '),
+        );
+      }
+
+      const draftOrders = response.data.data?.draftOrders;
+      if (!draftOrders?.edges || !draftOrders.pageInfo) {
+        throw new Error('My Orders page was not found in the API response.');
+      }
+
+      return {
+        orders: draftOrders.edges.map((edge) => {
+          const order = edge.node;
+          return {
+            id: order.id,
+            name: order.name,
+            createdAt: order.createdAt,
+            customer: order.customer ? { id: order.customer.id } : null,
+            tags: order.tags || [],
+            shippingAddress: order.shippingAddress
+              ? {
+                address1: order.shippingAddress.address1,
+                city: order.shippingAddress.city,
+                province: order.shippingAddress.province,
+                country: order.shippingAddress.country,
+                zip: order.shippingAddress.zip,
+              }
+              : null,
+            lineItems:
+              order.lineItems?.edges.map((lineItemEdge) => ({
+                title: lineItemEdge.node.title,
+                quantity: lineItemEdge.node.quantity,
+                appliedDiscount: lineItemEdge.node.appliedDiscount
+                  ? {
+                    value: lineItemEdge.node.appliedDiscount.value,
+                    valueType: lineItemEdge.node.appliedDiscount.valueType,
+                  }
+                  : null,
+                variant: lineItemEdge.node.variant
+                  ? {
+                    title: lineItemEdge.node.variant.title,
+                    price: lineItemEdge.node.variant.price,
+                    metafields:
+                      lineItemEdge.node.variant.metafields?.nodes || [],
+                  }
+                  : null,
+              })) || [],
+          };
+        }),
+        pageInfo: draftOrders.pageInfo,
+      };
+    } catch (error) {
+      console.error('Error fetching My Orders page:', error.message || error);
+      throw new Error('Failed to fetch My Orders page.');
     }
   }
 
