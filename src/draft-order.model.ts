@@ -214,12 +214,6 @@ export class DraftOrderPageInfo {
   @Field()
   hasNextPage: boolean;
 
-  @Field()
-  hasPreviousPage: boolean;
-
-  @Field({ nullable: true })
-  startCursor?: string;
-
   @Field({ nullable: true })
   endCursor?: string;
 }
