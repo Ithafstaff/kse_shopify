@@ -251,3 +251,53 @@ describe('AppService order pagination', () => {
     });
   });
 });
+
+describe('AppService shipping address validation', () => {
+  let service: AppService;
+
+  beforeEach(() => {
+    service = new AppService(configService());
+  });
+
+  it.each([
+    ['firstName'],
+    ['lastName'],
+    ['address1'],
+    ['city'],
+    ['province'],
+    ['country'],
+    ['zip'],
+  ])('rejects a blank %s', (field) => {
+    const address = {
+      firstName: 'Jane',
+      lastName: 'Doe',
+      address1: '123 Main Street',
+      address2: '',
+      city: 'Manila',
+      province: 'Metro Manila',
+      country: 'Philippines',
+      zip: '1000',
+      [field]: '   ',
+    };
+
+    expect(() => service.validateShippingAddress(address)).toThrow(
+      'All required shipping address fields must be provided.',
+    );
+  });
+
+  it('allows optional address fields to be blank', () => {
+    expect(() =>
+      service.validateShippingAddress({
+        firstName: 'Jane',
+        lastName: 'Doe',
+        address1: '123 Main Street',
+        address2: '',
+        company: '   ',
+        city: 'Manila',
+        province: 'Metro Manila',
+        country: 'Philippines',
+        zip: '1000',
+      }),
+    ).not.toThrow();
+  });
+});
