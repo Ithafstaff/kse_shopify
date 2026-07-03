@@ -1172,12 +1172,12 @@ export class AppService {
           tags: order.tags || [],
           shippingAddress: order.shippingAddress
             ? {
-                address1: order.shippingAddress.address1,
-                city: order.shippingAddress.city,
-                province: order.shippingAddress.province,
-                country: order.shippingAddress.country,
-                zip: order.shippingAddress.zip,
-              }
+              address1: order.shippingAddress.address1,
+              city: order.shippingAddress.city,
+              province: order.shippingAddress.province,
+              country: order.shippingAddress.country,
+              zip: order.shippingAddress.zip,
+            }
             : null,
           lineItems:
             order.lineItems?.edges.map((lineItemEdge) => ({
@@ -1185,17 +1185,17 @@ export class AppService {
               quantity: lineItemEdge.node.quantity,
               appliedDiscount: lineItemEdge.node.appliedDiscount
                 ? {
-                    value: lineItemEdge.node.appliedDiscount.value,
-                    valueType: lineItemEdge.node.appliedDiscount.valueType,
-                  }
+                  value: lineItemEdge.node.appliedDiscount.value,
+                  valueType: lineItemEdge.node.appliedDiscount.valueType,
+                }
                 : null,
               variant: lineItemEdge.node.variant
                 ? {
-                    title: lineItemEdge.node.variant.title,
-                    price: lineItemEdge.node.variant.price,
-                    metafields:
-                      lineItemEdge.node.variant.metafields?.nodes || [],
-                  }
+                  title: lineItemEdge.node.variant.title,
+                  price: lineItemEdge.node.variant.price,
+                  metafields:
+                    lineItemEdge.node.variant.metafields?.nodes || [],
+                }
                 : null,
             })) || [],
         };
@@ -1516,9 +1516,9 @@ export class AppService {
               shippingAddress: order.shippingAddress || null,
               shippingLine: order.shippingLine
                 ? {
-                    title: order.shippingLine.title,
-                    price: Number(order.shippingLine.price) || 0,
-                  }
+                  title: order.shippingLine.title,
+                  price: Number(order.shippingLine.price) || 0,
+                }
                 : null,
               lineItems:
                 order.lineItems?.edges.map((lineItemEdge) => ({
@@ -1527,11 +1527,11 @@ export class AppService {
                   appliedDiscount: lineItemEdge.node.appliedDiscount || null,
                   variant: lineItemEdge.node.variant
                     ? {
-                        title: lineItemEdge.node.variant.title,
-                        price: lineItemEdge.node.variant.price,
-                        metafields:
-                          lineItemEdge.node.variant.metafields?.nodes || [],
-                      }
+                      title: lineItemEdge.node.variant.title,
+                      price: lineItemEdge.node.variant.price,
+                      metafields:
+                        lineItemEdge.node.variant.metafields?.nodes || [],
+                    }
                     : null,
                 })) || [],
             });
@@ -2069,6 +2069,28 @@ export class AppService {
   }
 
   // Update a draft order
+  validateShippingAddress(shippingAddress: ShippingAddressInput): void {
+    const requiredFields = [
+      shippingAddress?.firstName,
+      shippingAddress?.lastName,
+      shippingAddress?.address1,
+      shippingAddress?.city,
+      shippingAddress?.province,
+      shippingAddress?.country,
+      shippingAddress?.zip,
+    ];
+
+    if (
+      requiredFields.some(
+        (value) => typeof value !== 'string' || value.trim().length === 0,
+      )
+    ) {
+      throw new Error(
+        'All required shipping address fields must be provided.',
+      );
+    }
+  }
+
   async updateDraftOrder(
     id: string,
     customerId: string,
@@ -2076,6 +2098,8 @@ export class AppService {
     metafields: any[],
     shippingAddress: ShippingAddressInput,
   ) {
+    this.validateShippingAddress(shippingAddress);
+
     try {
       const lineItemsWithVariants = lineItems.map((item) => ({
         variantId: item.variantId,
@@ -2146,6 +2170,8 @@ export class AppService {
     shippingAddress: ShippingAddressInput,
     email: string,
   ) {
+    this.validateShippingAddress(shippingAddress);
+
     // Ensure the draftOrderId has the correct format
     const formattedDraftOrderId = draftOrderId.startsWith(
       'gid://shopify/DraftOrder/',
