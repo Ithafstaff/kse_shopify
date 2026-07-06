@@ -145,6 +145,56 @@ describe('AppService shipping quote emails', () => {
     }
   });
 
+  it('configures finite SMTP connection and socket timeouts', async () => {
+    await (service as any).sendShippingQuoteEmails(
+      'customer-123',
+      'gid://shopify/DraftOrder/1001',
+      'customer@example.com',
+      shippingAddress,
+    );
+
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 30_000,
+      }),
+    );
+  });
+
+  it('logs sanitized SMTP diagnostics when email delivery fails', async () => {
+    const smtpError = Object.assign(new Error('Connection timed out'), {
+      code: 'ETIMEDOUT',
+      command: 'CONN',
+      responseCode: 421,
+      response: 'Service unavailable',
+    });
+    sendMail.mockRejectedValueOnce(smtpError);
+
+    await expect(
+      (service as any).sendShippingQuoteEmails(
+        'customer-123',
+        'gid://shopify/DraftOrder/1001',
+        'customer@example.com',
+        shippingAddress,
+      ),
+    ).rejects.toThrow('Failed to send shipping quote emails.');
+
+    expect(console.error).toHaveBeenCalledWith(
+      'Failed to send shipping quote emails for draft order 1001.',
+      {
+        message: 'Connection timed out',
+        code: 'ETIMEDOUT',
+        command: 'CONN',
+        responseCode: 421,
+        response: 'Service unavailable',
+      },
+    );
+    expect(JSON.stringify((console.error as jest.Mock).mock.calls)).not.toContain(
+      'secret',
+    );
+  });
+
   it('rejects when either email cannot be sent', async () => {
     sendMail.mockRejectedValueOnce(new Error('SMTP unavailable'));
 
@@ -158,4 +208,3 @@ describe('AppService shipping quote emails', () => {
     ).rejects.toThrow('Failed to send shipping quote emails.');
   });
 });
-
