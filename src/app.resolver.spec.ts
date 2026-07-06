@@ -92,4 +92,21 @@ describe('AppResolver requestShippingFee', () => {
       'Failed to request shipping fee. Failed to send shipping quote emails.',
     );
   });
+
+  it('updates a normal order address without sending shipping quote emails', async () => {
+    await expect(
+      resolver.updateDraftOrderAddress(
+        'gid://shopify/DraftOrder/1001',
+        'customer@example.com',
+        shippingAddress,
+      ),
+    ).resolves.toBe(true);
+
+    expect(appService.updateDraftOrderAddress).toHaveBeenCalledWith(
+      'gid://shopify/DraftOrder/1001',
+      shippingAddress,
+      'customer@example.com',
+    );
+    expect(appService.sendShippingQuoteEmails).not.toHaveBeenCalled();
+  });
 });
