@@ -2642,106 +2642,131 @@ export class AppService {
     }
   }
 
-  // async sendShippingRequestEmail(userId: string, draftOrderId: string) {
-  //   const transporter = nodemailer.createTransport({
-  //     service: 'gmail',
-  //     auth: {
-  //       user: process.env.EMAIL_USER,
-  //       pass: process.env.EMAIL_PASS,
-  //     },
-  //   });
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
-  //   const numericDraftOrderId = draftOrderId.replace(
-  //     'gid://shopify/DraftOrder/',
-  //     '',
-  //   );
-  //   const draftOrder = await this.getDraftOrderDetails(draftOrderId);
+  async sendShippingQuoteEmails(
+    userId: string,
+    draftOrderId: string,
+    customerEmail: string,
+    shippingAddress: ShippingAddressInput,
+  ): Promise<boolean> {
+    const numericDraftOrderId = draftOrderId.replace(
+      'gid://shopify/DraftOrder/',
+      '',
+    );
+    const draftOrder = await this.getDraftOrderDetails(draftOrderId);
+    const customer = draftOrder?.customer || {};
+    const lineItems = draftOrder?.line_items || [];
+    const currency = this.escapeHtml(draftOrder?.currency || '');
+    const orderNumber = this.escapeHtml(
+      draftOrder?.name || `#${numericDraftOrderId}`,
+    );
+    const poNumber =
+      String(draftOrder?.tags || '')
+        .split(',')
+        .map((tag) => tag.trim())
+        .find((tag) => tag.startsWith('PO:'))
+        ?.replace(/^PO:\s*/, '') || 'None';
+    const subtotal = parseFloat(
+      draftOrder?.subtotal_price || draftOrder?.total_price || '0',
+    ).toFixed(2);
+    const from = this.configService.get<string>('EMAIL_USER');
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: from,
+        pass: this.configService.get<string>('EMAIL_PASS'),
+      },
+    });
 
-  //   const customer = draftOrder?.customer || {};
-  //   const lineItems = draftOrder?.line_items || [];
-  //   const tags = draftOrder?.tags || '';
-  //   const poTag = tags.split(',').find((tag) => tag.includes('PO:')) || '';
-  //   const currency = draftOrder.currency || '';
+    const addressHtml = `
+      ${this.escapeHtml(shippingAddress.company)}<br>
+      ${this.escapeHtml(shippingAddress.firstName)} ${this.escapeHtml(shippingAddress.lastName)}<br>
+      ${this.escapeHtml(shippingAddress.address1)}<br>
+      ${this.escapeHtml(shippingAddress.city)}, ${this.escapeHtml(shippingAddress.province)} ${this.escapeHtml(shippingAddress.zip)}<br>
+      ${this.escapeHtml(shippingAddress.country)}
+    `;
+    const productRows = lineItems
+      .map((item) => {
+        const quantity = Number(item.quantity) || 0;
+        const unitPrice = parseFloat(item.price || item.variant?.price || '0');
+        const lineTotal = parseFloat(
+          item.line_price || String(unitPrice * quantity),
+        );
+        return `
+          <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;">${this.escapeHtml(item.title)}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">x${quantity}</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">${unitPrice.toFixed(2)} ${currency} each</td>
+            <td style="padding: 8px; border: 1px solid #ddd;">${lineTotal.toFixed(2)} ${currency} total</td>
+          </tr>
+        `;
+      })
+      .join('');
 
-  //   const address = customer.default_address || {};
+    const customerMailOptions = {
+      from,
+      to: customerEmail,
+      subject: `Shipping Quote Request Received - Order ${orderNumber}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #f9f9f9;">
+          <h2 style="color: #951828;">Shipping Quote Request Received</h2>
+          <p>Hi ${this.escapeHtml(customer.first_name || shippingAddress.firstName)},</p>
+          <p>We've received your request for a shipping quote for order <strong>${orderNumber}</strong>.</p>
+          <p>Our team will review the shipping details and update your order with the shipping cost. We'll contact you once the quote is ready.</p>
+          <h3>Shipping address</h3>
+          <p>${addressHtml}</p>
+          <h3>Order summary</h3>
+          <table style="width: 100%; border-collapse: collapse;"><tbody>${productRows}</tbody></table>
+          <p style="text-align: right;"><strong>Order subtotal: ${subtotal} ${currency}</strong></p>
+          <p>No payment or further action is required until the shipping quote has been prepared.</p>
+          <p>If you have questions, please contact our customer service team.</p>
+          <p>Thank you,<br><strong>KSE Supplies</strong></p>
+        </div>
+      `,
+    };
+    const internalMailOptions = {
+      from,
+      to: 'orders@ksesuppliers.com',
+      subject: `Shipping Quote Request - Order ${orderNumber}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #f9f9f9;">
+          <h2 style="color: #951828;">Shipping Quote Request</h2>
+          <p><strong>User ID:</strong> ${this.escapeHtml(userId)}</p>
+          <p><strong>Customer:</strong> ${this.escapeHtml(customer.first_name)} ${this.escapeHtml(customer.last_name)} (${this.escapeHtml(customerEmail)})</p>
+          <p><strong>Company:</strong> ${this.escapeHtml(shippingAddress.company || 'N/A')}</p>
+          <p><strong>PO Number:</strong> ${this.escapeHtml(poNumber)}</p>
+          <h3>Shipping address</h3>
+          <p>${addressHtml}</p>
+          <h3>Order details</h3>
+          <table style="width: 100%; border-collapse: collapse;"><tbody>${productRows}</tbody></table>
+          <p style="text-align: right;"><strong>Order subtotal: ${subtotal} ${currency}</strong></p>
+          <p><a href="https://admin.shopify.com/store/kse-suppliers/draft_orders/${encodeURIComponent(numericDraftOrderId)}">View Draft Order</a></p>
+        </div>
+      `,
+    };
 
-  //   const productListHTML = lineItems
-  //     .map((item) => {
-  //       const title = item.title || '';
-  //       const quantity = item.quantity || 1;
-
-  //       const originalPrice = parseFloat(item.variant?.price || '0');
-  //       const totalDiscount = parseFloat(item.appliedDiscount?.value || '0');
-  //       const unitDiscount = quantity > 0 ? totalDiscount / quantity : 0;
-
-  //       const adjustedUnitPrice = originalPrice - unitDiscount;
-  //       const adjustedLinePrice = adjustedUnitPrice * quantity;
-
-  //       return `
-  //   <tr>
-  //     <td>${title}</td>
-  //     <td>x${quantity}</td>
-  //     <td>${adjustedUnitPrice.toFixed(2)} ${draftOrder.currency || ''} each</td>
-  //     <td>${adjustedLinePrice.toFixed(2)} ${draftOrder.currency || ''} total</td>
-  //   </tr>
-  // `;
-  //     })
-  //     .join('');
-
-  //   const orderTotal = parseFloat(draftOrder.total_price || '0.00');
-
-  //   const mailOptions = {
-  //     from: process.env.EMAIL_USER,
-  //     to: 'orders@ksesuppliers.com',
-  //     subject: `Shipping Request - Order ${draftOrder.name || numericDraftOrderId}`,
-  //     html: `
-  //     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #f9f9f9;">
-  //       <h2 style="color: #951828;">Shipping Fee Request</h2>
-
-  //       <p><strong>User ID:</strong> ${userId}</p>
-  //       <p><strong>Customer:</strong> ${customer.first_name || ''} ${customer.last_name || ''} (${customer.email || ''})</p>
-  //       <p><strong>Company:</strong> ${address.company || 'N/A'}</p>
-  //       <p><strong>PO Number:</strong> ${poTag || 'None'}</p>
-
-  //       <h4 style="margin-top: 20px;">Shipping Address:</h4>
-  //       <p>
-  //         ${address.address1 || ''}<br>
-  //         ${address.city || ''}, ${address.province || ''}<br>
-  //         ${address.country || ''} ${address.zip || ''}
-  //       </p>
-
-  //       <h4 style="margin-top: 20px;">Order Details:</h4>
-  //       <table style="width: 100%; border-collapse: collapse;">
-  //         <thead style="background-color: #eee;">
-  //           <tr>
-  //             <th style="padding: 8px; border: 1px solid #ddd;">Product</th>
-  //             <th style="padding: 8px; border: 1px solid #ddd;">Qty</th>
-  //           </tr>
-  //         </thead>
-  //         <tbody>${productListHTML}</tbody>
-  //       </table>
-
-  //       <h3 style="text-align: right; margin-top: 20px;">Order Total: ${orderTotal.toFixed(2)} ${currency}</h3>
-
-  //       <p style="margin-top: 30px;">
-  //         <a href="https://admin.shopify.com/store/kse-suppliers/draft_orders/${numericDraftOrderId}" 
-  //            style="display: inline-block; padding: 10px 15px; background-color: #951828; color: white; text-decoration: none; border-radius: 4px;">
-  //           View Draft Order
-  //         </a>
-  //       </p>
-  //     </div>
-  //   `,
-  //   };
-
-  //   try {
-  //     await transporter.sendMail(mailOptions);
-  //     console.log('Shipping request email sent successfully.');
-  //     return { success: true, message: 'Email sent successfully' };
-  //   } catch (error) {
-  //     console.error('Error sending email:', error);
-  //     throw new Error('Failed to send shipping request email.');
-  //   }
-  // }
+    try {
+      await Promise.all([
+        transporter.sendMail(customerMailOptions),
+        transporter.sendMail(internalMailOptions),
+      ]);
+      console.log(`Shipping quote emails sent for draft order ${numericDraftOrderId}.`);
+      return true;
+    } catch (error) {
+      console.error(
+        `Failed to send shipping quote emails for draft order ${numericDraftOrderId}.`,
+      );
+      throw new Error('Failed to send shipping quote emails.');
+    }
+  }
 
   async placeOrderEmail(userId: string, draftOrderId: string) {
     const transporter = nodemailer.createTransport({

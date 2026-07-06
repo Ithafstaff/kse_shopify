@@ -280,7 +280,12 @@ export class AppResolver {
         email,
       );
 
-      // await this.appService.sendShippingRequestEmail(userId, draftOrderId);
+      await this.appService.sendShippingQuoteEmails(
+        userId,
+        draftOrderId,
+        email,
+        shippingAddress,
+      );
 
       return true;
     } catch (error) {
