@@ -2680,6 +2680,9 @@ export class AppService {
     const from = this.configService.get<string>('EMAIL_USER');
     const transporter = nodemailer.createTransport({
       service: 'gmail',
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
       auth: {
         user: from,
         pass: this.configService.get<string>('EMAIL_PASS'),
@@ -2761,8 +2764,21 @@ export class AppService {
       console.log(`Shipping quote emails sent for draft order ${numericDraftOrderId}.`);
       return true;
     } catch (error) {
+      const mailError = error as Error & {
+        code?: string;
+        command?: string;
+        responseCode?: number;
+        response?: string;
+      };
       console.error(
         `Failed to send shipping quote emails for draft order ${numericDraftOrderId}.`,
+        {
+          message: mailError.message,
+          code: mailError.code,
+          command: mailError.command,
+          responseCode: mailError.responseCode,
+          response: mailError.response,
+        },
       );
       throw new Error('Failed to send shipping quote emails.');
     }
