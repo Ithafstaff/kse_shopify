@@ -267,6 +267,21 @@ export class AppResolver {
   }
 
   @Mutation(() => Boolean)
+  async updateDraftOrderAddress(
+    @Args('draftOrderId') draftOrderId: string,
+    @Args('email', { type: () => String }) email: string,
+    @Args('shippingAddress', { type: () => ShippingAddressInput })
+    shippingAddress: ShippingAddressInput,
+  ): Promise<boolean> {
+    await this.appService.updateDraftOrderAddress(
+      draftOrderId,
+      shippingAddress,
+      email,
+    );
+    return true;
+  }
+
+  @Mutation(() => Boolean)
   async requestShippingFee(
     @Args('userId') userId: string,
     @Args('draftOrderId') draftOrderId: string,
