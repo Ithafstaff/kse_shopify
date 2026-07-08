@@ -2184,6 +2184,8 @@ export class AppService {
         draftOrderUpdate(id: "${formattedDraftOrderId}", input: {
           email: "${email}",
           shippingAddress: {
+            firstName: "${shippingAddress.firstName}",
+            lastName: "${shippingAddress.lastName}",
             address1: "${shippingAddress.address1}",
             city: "${shippingAddress.city}",
             province: "${shippingAddress.province}",

@@ -65,6 +65,48 @@ function shopifyPage(
   };
 }
 
+describe('AppService draft order address persistence', () => {
+  let service: AppService;
+  const mockedAxiosPost = jest.mocked(axios.post);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AppService(configService());
+  });
+
+  it('sends recipient names with the shipping address update', async () => {
+    mockedAxiosPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          draftOrderUpdate: {
+            draftOrder: { id: 'gid://shopify/DraftOrder/1001' },
+            userErrors: [],
+          },
+        },
+      },
+    });
+
+    await service.updateDraftOrderAddress(
+      'gid://shopify/DraftOrder/1001',
+      {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        company: 'Analytical Engine',
+        address1: '123 Main Street',
+        city: 'New York',
+        province: 'NY',
+        country: 'United States',
+        zip: '10001',
+      },
+      'ada@example.com',
+    );
+
+    const request = mockedAxiosPost.mock.calls[0][1] as { query: string };
+    expect(request.query).toContain('firstName: "Ada"');
+    expect(request.query).toContain('lastName: "Lovelace"');
+  });
+});
+
 describe('AppService order pagination', () => {
   let service: AppService;
 
