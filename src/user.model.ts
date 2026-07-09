@@ -47,3 +47,21 @@ export class User {
   @Field({ nullable: true })
   priceLevel: string;
 }
+
+@ObjectType()
+export class CustomerPageInfo {
+  @Field()
+  hasNextPage: boolean;
+
+  @Field({ nullable: true })
+  endCursor?: string;
+}
+
+@ObjectType()
+export class CustomerPage {
+  @Field(() => [User])
+  customers: User[];
+
+  @Field(() => CustomerPageInfo)
+  pageInfo: CustomerPageInfo;
+}

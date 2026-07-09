@@ -65,6 +65,28 @@ function shopifyPage(
   };
 }
 
+function customerEdge(id: string, cursor: string) {
+  return {
+    cursor,
+    node: {
+      id: `gid://shopify/Customer/${id}`,
+      firstName: `First${id}`,
+      lastName: `Last${id}`,
+      email: `customer${id}@example.com`,
+      addresses: [],
+      defaultAddress: {
+        address1: null,
+        company: id === '2' ? 'Acme' : null,
+        city: null,
+        province: null,
+        country: null,
+        zip: null,
+      },
+      tags: ['price1'],
+    },
+  };
+}
+
 describe('AppService draft order address persistence', () => {
   let service: AppService;
   const mockedAxiosPost = jest.mocked(axios.post);
@@ -307,6 +329,54 @@ describe('AppService order pagination', () => {
       first: 10,
       searchQuery: 'customer_id:123 -tag:Placed -tag:ShipRequested',
     });
+  });
+});
+
+describe('AppService customer pagination', () => {
+  let service: AppService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AppService(configService());
+  });
+
+  it('searches customers with Shopify query and cursor pagination', async () => {
+    mockedAxios.mockResolvedValueOnce({
+      data: {
+        data: {
+          customers: {
+            edges: [customerEdge('1', 'cursor-1'), customerEdge('2', 'cursor-2')],
+            pageInfo: {
+              hasNextPage: true,
+              endCursor: 'cursor-2',
+            },
+          },
+        },
+      },
+    });
+
+    const result = await service.searchCustomers('Ada Lovelace', 2, 'cursor-0');
+
+    expect(result.customers.map((customer) => customer.id)).toEqual([
+      'gid://shopify/Customer/1',
+      'gid://shopify/Customer/2',
+    ]);
+    expect(result.pageInfo).toEqual({
+      hasNextPage: true,
+      endCursor: 'cursor-2',
+    });
+
+    const request = mockedAxios.mock.calls[0][0] as unknown as {
+      data: { variables: Record<string, unknown>; query: string };
+    };
+    expect(request.data.variables).toEqual({
+      first: 2,
+      after: 'cursor-0',
+      query: 'Ada Lovelace',
+    });
+    expect(request.data.query).toContain(
+      'customers(first: $first, after: $after, query: $query)',
+    );
   });
 });
 
