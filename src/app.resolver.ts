@@ -193,6 +193,7 @@ export class AppResolver {
     const requestedCompany = includeTag.replace('company:', '').trim();
     const normalizedRequestedCompany =
       this.normalizeCompanyNameForTagMatch(requestedCompany);
+    if (!normalizedRequestedCompany) return false;
 
     return orderTags.some((orderTag) => {
       if (!orderTag.startsWith('company:')) {
@@ -202,6 +203,7 @@ export class AppResolver {
       const orderCompany = orderTag.replace('company:', '').trim();
       const normalizedOrderCompany =
         this.normalizeCompanyNameForTagMatch(orderCompany);
+      if (!normalizedOrderCompany) return false;
 
       return (
         normalizedOrderCompany === normalizedRequestedCompany ||

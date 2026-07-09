@@ -223,6 +223,22 @@ describe('AppService order pagination', () => {
       });
     });
 
+    it('does not match draft orders with blank company tags', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', ['Placed', 'company:']),
+          orderEdge('2', 'cursor-2', ['Placed', 'company:   ']),
+        ]),
+      );
+
+      await expect(
+        service.getCompanyDraftOrdersPage('Acme', 10),
+      ).resolves.toEqual({
+        orders: [],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      });
+    });
+
     it.each([
       ['', undefined],
       ['Acme', 'not-base64-json'],

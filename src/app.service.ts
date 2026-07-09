@@ -70,6 +70,7 @@ export class AppService {
 
   private orderMatchesCompany(tags: string[] = [], company: string): boolean {
     const requestedCompany = this.normalizeCompanyName(company);
+    if (!requestedCompany) return false;
 
     return tags.some((tag) => {
       if (!tag.startsWith('company:')) return false;
@@ -77,6 +78,7 @@ export class AppService {
       const orderCompany = this.normalizeCompanyName(
         tag.replace('company:', '').trim(),
       );
+      if (!orderCompany) return false;
 
       return (
         orderCompany === requestedCompany ||
