@@ -28,6 +28,16 @@ type User {
   priceLevel: String
 }
 
+type CustomerPageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type CustomerPage {
+  customers: [User!]!
+  pageInfo: CustomerPageInfo!
+}
+
 type ShippingAddress {
   address1: String!
   city: String!
@@ -159,6 +169,7 @@ type CustomerCompany {
 type Query {
   products: [Product!]!
   getCustomers: [User!]!
+  searchCustomers(query: String, first: Int! = 20, after: String): CustomerPage!
   getCustomerById(id: String!): User
   getDraftOrder(id: String!): DraftOrder
   isDraftOrderCompleted(id: String!): Boolean!

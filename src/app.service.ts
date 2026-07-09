@@ -298,6 +298,85 @@ export class AppService {
     return customers;
   }
 
+  async searchCustomers(query = '', first = 20, after?: string) {
+    const response = await axios({
+      url: this.shopifyApiUrl,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Shopify-Access-Token': this.shopifyAccessToken,
+      },
+      data: {
+        query: `
+          query searchCustomers($first: Int!, $after: String, $query: String) {
+            customers(first: $first, after: $after, query: $query) {
+              edges {
+                cursor
+                node {
+                  id
+                  firstName
+                  lastName
+                  email
+                  addresses {
+                    address1
+                    address2
+                    company
+                    city
+                    province
+                    country
+                    zip
+                  }
+                  defaultAddress {
+                    address1
+                    company
+                    city
+                    province
+                    country
+                    zip
+                  }
+                  tags
+                }
+              }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
+            }
+          }
+        `,
+        variables: {
+          first,
+          after: after || null,
+          query: query.trim() || null,
+        },
+      },
+    });
+
+    const customerConnection = response.data.data.customers;
+    const customers = customerConnection.edges.map((edge) => ({
+      id: edge.node.id,
+      firstName: edge.node.firstName || 'N/A',
+      lastName: edge.node.lastName || 'N/A',
+      email: edge.node.email || 'N/A',
+      addresses: edge.node.addresses.map((address) => ({
+        address1: address.address1,
+        address2: address.address2,
+        company: address.company,
+        city: address.city,
+        province: address.province,
+        country: address.country,
+        zip: address.zip,
+      })),
+      defaultAddress: edge.node.defaultAddress,
+      priceLevel: edge.node.tags && edge.node.tags[0] ? edge.node.tags[0].trim() : 'N/A',
+    }));
+
+    return {
+      customers,
+      pageInfo: customerConnection.pageInfo,
+    };
+  }
+
   // Get shop customer by ID
   async getCustomerById(id: string) {
     const response = await axios({

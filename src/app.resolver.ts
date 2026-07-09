@@ -1,7 +1,7 @@
 import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { AppService } from './app.service';
 import { Product } from './product.model';
-import { User } from './user.model';
+import { CustomerPage, User } from './user.model';
 import {
   CompanyDraftOrderPage,
   DraftOrder,
@@ -32,6 +32,15 @@ export class AppResolver {
   @Query(() => [User])
   async getCustomers() {
     return this.appService.getCustomers();
+  }
+
+  @Query(() => CustomerPage)
+  async searchCustomers(
+    @Args('query', { type: () => String, nullable: true }) query = '',
+    @Args('first', { type: () => Int, defaultValue: 20 }) first: number,
+    @Args('after', { type: () => String, nullable: true }) after?: string,
+  ) {
+    return this.appService.searchCustomers(query, first, after);
   }
 
   @Query(() => User, { nullable: true })
