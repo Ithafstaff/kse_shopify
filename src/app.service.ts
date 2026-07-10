@@ -88,6 +88,18 @@ export class AppService {
     });
   }
 
+  private orderMatchesPoSearch(tags: string[] = [], poSearch?: string): boolean {
+    const requestedPo = poSearch?.trim().toLowerCase();
+    if (!requestedPo) return true;
+
+    return tags.some((tag) => {
+      if (!tag.startsWith('PO:')) return false;
+
+      const orderPo = tag.replace(/^PO:\s*/, '').trim().toLowerCase();
+      return orderPo.includes(requestedPo);
+    });
+  }
+
   escapeGraphQLString(str: string): string {
     if (!str) return '';
     return str
@@ -1461,6 +1473,7 @@ export class AppService {
     company: string,
     first = 10,
     after?: string,
+    poSearch?: string,
   ): Promise<CompanyDraftOrderPage> {
     const requestedCompany = company?.trim();
 
@@ -1587,7 +1600,10 @@ export class AppService {
           lastConsumedEdgeCursor = edge.cursor;
           const order = edge.node;
 
-          if (this.orderMatchesCompany(order.tags || [], requestedCompany)) {
+          if (
+            this.orderMatchesCompany(order.tags || [], requestedCompany) &&
+            this.orderMatchesPoSearch(order.tags || [], poSearch)
+          ) {
             orders.push({
               id: order.id,
               name: order.name,
