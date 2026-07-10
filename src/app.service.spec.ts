@@ -168,6 +168,89 @@ describe('AppService order pagination', () => {
       });
     });
 
+    it('filters company orders by numeric PO across scanned orders', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', [
+            'Placed',
+            'company: Acme',
+            'PO:TEST',
+          ]),
+          orderEdge('2', 'cursor-2', [
+            'Placed',
+            'company: Acme',
+            'PO:123456',
+          ]),
+          orderEdge('3', 'cursor-3', [
+            'Placed',
+            'company: Other',
+            'PO:123456',
+          ]),
+        ]),
+      );
+
+      const result = await service.getCompanyDraftOrdersPage(
+        'Acme',
+        10,
+        undefined,
+        '123456',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D2']);
+    });
+
+    it('filters company orders by mixed symbol PO without stripping punctuation', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', [
+            'Placed',
+            'company: Acme',
+            'PO:BLS#3170',
+          ]),
+          orderEdge('2', 'cursor-2', [
+            'Placed',
+            'company: Acme',
+            'PO:BLS3170',
+          ]),
+        ]),
+      );
+
+      const result = await service.getCompanyDraftOrdersPage(
+        'Acme',
+        10,
+        undefined,
+        'BLS#3170',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D1']);
+    });
+
+    it('filters company orders by word PO case-insensitively', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', [
+            'Placed',
+            'company: Acme',
+            'PO:TEST',
+          ]),
+          orderEdge('2', 'cursor-2', [
+            'Placed',
+            'company: Acme',
+            'PO:OTHER',
+          ]),
+        ]),
+      );
+
+      const result = await service.getCompanyDraftOrdersPage(
+        'Acme',
+        10,
+        undefined,
+        'test',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D1']);
+    });
+
     it('resumes after the last consumed edge without duplicates', async () => {
       mockedAxios
         .mockResolvedValueOnce(

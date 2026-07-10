@@ -160,8 +160,14 @@ export class AppResolver {
     @Args('company', { type: () => String }) company: string,
     @Args('first', { type: () => Int, defaultValue: 10 }) first: number,
     @Args('after', { type: () => String, nullable: true }) after?: string,
+    @Args('poSearch', { type: () => String, nullable: true }) poSearch?: string,
   ): Promise<CompanyDraftOrderPage> {
-    return this.appService.getCompanyDraftOrdersPage(company, first, after);
+    return this.appService.getCompanyDraftOrdersPage(
+      company,
+      first,
+      after,
+      poSearch,
+    );
   }
 
   @Query(() => [DraftOrder], { nullable: true })
