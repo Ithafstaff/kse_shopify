@@ -2750,6 +2750,228 @@ export class AppService {
       .replace(/'/g, '&#039;');
   }
 
+  async getCombinedDraftOrdersPage(
+    customerId: string,
+    company: string,
+    first = 10,
+    after?: string,
+    poSearch?: string,
+  ): Promise<CompanyDraftOrderPage> {
+    const numericCustomerId = customerId.split('/').pop();
+
+    if (!numericCustomerId || !/^\d+$/.test(numericCustomerId)) {
+      throw new Error('Invalid Shopify customer ID.');
+    }
+
+    const requestedCompany = company?.trim();
+    const hasCompany = Boolean(
+      requestedCompany && this.normalizeCompanyName(requestedCompany),
+    );
+
+    const pageSize = Math.min(Math.max(first, 1), 10);
+    let shopifyAfter = this.decodeCompanyOrderCursor(after);
+    let lastConsumedEdgeCursor = shopifyAfter;
+    let hasMoreOrders = false;
+    let scanning = true;
+    const orders: DraftOrder[] = [];
+    const seenCursors = new Set<string>();
+
+    const query = `
+      query GetCombinedDraftOrdersPage(
+        $first: Int!
+        $after: String
+        $searchQuery: String!
+      ) {
+        draftOrders(
+          first: $first
+          after: $after
+          query: $searchQuery
+          sortKey: CREATED_AT
+          reverse: true
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            cursor
+            node {
+              id
+              name
+              createdAt
+              customer { id }
+              tags
+              shippingAddress {
+                address1
+                city
+                province
+                country
+                zip
+                company
+              }
+              shippingLine {
+                title
+                price
+              }
+              lineItems(first: 10) {
+                edges {
+                  node {
+                    title
+                    quantity
+                    appliedDiscount {
+                      value
+                      valueType
+                    }
+                    variant {
+                      title
+                      price
+                      metafields(first: 5) {
+                        nodes {
+                          key
+                          value
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      while (scanning) {
+        const response = await axios({
+          url: this.shopifyApiUrl,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': this.shopifyAccessToken,
+          },
+          data: {
+            query,
+            variables: {
+              first: 50,
+              after: shopifyAfter,
+              searchQuery: 'tag:Placed',
+            },
+          },
+        });
+
+        if (response.data.errors?.length) {
+          throw new Error(
+            response.data.errors
+              .map((error: { message: string }) => error.message)
+              .join('; '),
+          );
+        }
+
+        const connection = response.data.data?.draftOrders;
+
+        if (!connection?.edges || !connection?.pageInfo) {
+          throw new Error(
+            'Combined draft-order page not found in the API response.',
+          );
+        }
+
+        for (let index = 0; index < connection.edges.length; index += 1) {
+          const edge = connection.edges[index];
+
+          if (!edge.cursor || seenCursors.has(edge.cursor)) {
+            throw new Error('Shopify returned an invalid draft-order cursor.');
+          }
+
+          seenCursors.add(edge.cursor);
+          lastConsumedEdgeCursor = edge.cursor;
+          const order = edge.node;
+          const isPersonalOrder =
+            order.customer?.id === `gid://shopify/Customer/${numericCustomerId}`;
+          const isCompanyOrder =
+            hasCompany &&
+            this.orderMatchesCompany(order.tags || [], requestedCompany);
+
+          if (
+            (isPersonalOrder || isCompanyOrder) &&
+            this.orderMatchesPoSearch(order.tags || [], poSearch)
+          ) {
+            orders.push({
+              id: order.id,
+              name: order.name,
+              createdAt: order.createdAt,
+              customer: order.customer ? { id: order.customer.id } : null,
+              orderType: isCompanyOrder && !isPersonalOrder ? 'Company' : 'Personal',
+              tags: order.tags || [],
+              shippingAddress: order.shippingAddress || null,
+              shippingLine: order.shippingLine
+                ? {
+                  title: order.shippingLine.title,
+                  price: Number(order.shippingLine.price) || 0,
+                }
+                : null,
+              lineItems:
+                order.lineItems?.edges.map((lineItemEdge) => ({
+                  title: lineItemEdge.node.title,
+                  quantity: lineItemEdge.node.quantity,
+                  appliedDiscount: lineItemEdge.node.appliedDiscount || null,
+                  variant: lineItemEdge.node.variant
+                    ? {
+                      title: lineItemEdge.node.variant.title,
+                      price: lineItemEdge.node.variant.price,
+                      metafields:
+                        lineItemEdge.node.variant.metafields?.nodes || [],
+                    }
+                    : null,
+                })) || [],
+            });
+          }
+
+          if (orders.length === pageSize) {
+            hasMoreOrders =
+              index < connection.edges.length - 1 ||
+              connection.pageInfo.hasNextPage;
+            scanning = false;
+            break;
+          }
+        }
+
+        if (!scanning) break;
+
+        if (!connection.pageInfo.hasNextPage) {
+          hasMoreOrders = false;
+          break;
+        }
+
+        const endCursor = connection.pageInfo.endCursor;
+        if (!endCursor || endCursor === shopifyAfter) {
+          throw new Error(
+            'Shopify reported another draft-order page without a new cursor.',
+          );
+        }
+
+        shopifyAfter = endCursor;
+      }
+
+      return {
+        orders,
+        pageInfo: {
+          hasNextPage: hasMoreOrders,
+          endCursor:
+            hasMoreOrders && lastConsumedEdgeCursor
+              ? this.encodeCompanyOrderCursor(lastConsumedEdgeCursor)
+              : null,
+        },
+      };
+    } catch (error) {
+      console.error(
+        'Error fetching combined draft-order page:',
+        error.response?.data || error.message,
+      );
+      throw new Error('Failed to fetch combined draft-order page.');
+    }
+  }
+
   async sendShippingQuoteEmails(
     userId: string,
     draftOrderId: string,
