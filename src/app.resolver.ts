@@ -126,7 +126,11 @@ export class AppResolver {
       );
     }
 
-    return filteredOrders;
+    return filteredOrders.sort(
+      (firstOrder, secondOrder) =>
+        new Date(secondOrder.createdAt || 0).getTime() -
+        new Date(firstOrder.createdAt || 0).getTime(),
+    );
   }
 
   @Query(() => DraftOrderPage)
