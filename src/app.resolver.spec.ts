@@ -16,6 +16,7 @@ describe('AppResolver requestShippingFee', () => {
   let appService: {
     updateDraftOrderAddress: jest.Mock;
     sendShippingQuoteEmails: jest.Mock;
+    getDraftOrders: jest.Mock;
   };
   let resolver: AppResolver;
 
@@ -23,6 +24,7 @@ describe('AppResolver requestShippingFee', () => {
     appService = {
       updateDraftOrderAddress: jest.fn().mockResolvedValue(true),
       sendShippingQuoteEmails: jest.fn().mockResolvedValue(true),
+      getDraftOrders: jest.fn(),
     };
     resolver = new AppResolver(appService as unknown as AppService);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -108,5 +110,38 @@ describe('AppResolver requestShippingFee', () => {
       'customer@example.com',
     );
     expect(appService.sendShippingQuoteEmails).not.toHaveBeenCalled();
+  });
+
+  it('returns requested shipping draft orders newest first', async () => {
+    appService.getDraftOrders.mockResolvedValue([
+      {
+        id: 'gid://shopify/DraftOrder/1001',
+        createdAt: '2026-07-01T00:00:00Z',
+        customer: { id: 'gid://shopify/Customer/123' },
+        tags: ['ShipRequested'],
+      },
+      {
+        id: 'gid://shopify/DraftOrder/1002',
+        createdAt: '2026-07-03T00:00:00Z',
+        customer: { id: 'gid://shopify/Customer/123' },
+        tags: ['ShipRequested'],
+      },
+      {
+        id: 'gid://shopify/DraftOrder/1003',
+        createdAt: '2026-07-02T00:00:00Z',
+        customer: { id: 'gid://shopify/Customer/123' },
+        tags: ['Placed'],
+      },
+    ]);
+
+    const orders = await resolver.getDraftOrdersByCustomerId(
+      'gid://shopify/Customer/123',
+      ['ShipRequested'],
+    );
+
+    expect(orders.map((order) => order.id)).toEqual([
+      'gid://shopify/DraftOrder/1002',
+      'gid://shopify/DraftOrder/1001',
+    ]);
   });
 });
