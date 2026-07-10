@@ -174,6 +174,23 @@ export class AppResolver {
     );
   }
 
+  @Query(() => CompanyDraftOrderPage)
+  async getCombinedDraftOrdersPage(
+    @Args('customerId', { type: () => String }) customerId: string,
+    @Args('company', { type: () => String }) company: string,
+    @Args('first', { type: () => Int, defaultValue: 10 }) first: number,
+    @Args('after', { type: () => String, nullable: true }) after?: string,
+    @Args('poSearch', { type: () => String, nullable: true }) poSearch?: string,
+  ): Promise<CompanyDraftOrderPage> {
+    return this.appService.getCombinedDraftOrdersPage(
+      customerId,
+      company,
+      first,
+      after,
+      poSearch,
+    );
+  }
+
   @Query(() => [DraftOrder], { nullable: true })
   async getAllDraftOrdersWithTags(
     @Args('includeTags', { type: () => [String], nullable: true })

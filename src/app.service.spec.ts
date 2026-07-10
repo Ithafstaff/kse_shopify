@@ -384,6 +384,113 @@ describe('AppService order pagination', () => {
     });
   });
 
+  describe('getCombinedDraftOrdersPage', () => {
+    it('returns personal and company orders in one newest-first page', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', [
+            'Placed',
+            'company: Other',
+            'PO:111',
+          ]),
+          orderEdge('2', 'cursor-2', [
+            'Placed',
+            'company: Acme',
+            'PO:222',
+          ]),
+          orderEdge('3', 'cursor-3', [
+            'Placed',
+            'company: Other',
+            'PO:333',
+          ]),
+        ]),
+      );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual([
+        '#D1',
+        '#D2',
+        '#D3',
+      ]);
+    });
+
+    it('filters combined orders by PO across personal and company matches', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', [
+            'Placed',
+            'company: Other',
+            'PO:ABC-123',
+          ]),
+          orderEdge('2', 'cursor-2', [
+            'Placed',
+            'company: Acme',
+            'PO:ABC-123',
+          ]),
+          orderEdge('3', 'cursor-3', [
+            'Placed',
+            'company: Acme',
+            'PO:XYZ-999',
+          ]),
+        ]),
+      );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        'abc-123',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual([
+        '#D1',
+        '#D2',
+      ]);
+    });
+
+    it('resumes combined pagination after the last consumed Shopify edge', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(
+          shopifyPage(
+            [
+              orderEdge('1', 'cursor-1', ['Placed', 'company: Other']),
+              orderEdge('2', 'cursor-2', ['Placed', 'company: Acme']),
+              orderEdge('3', 'cursor-3', ['Placed', 'company: Acme']),
+            ],
+            true,
+          ),
+        )
+        .mockResolvedValueOnce(
+          shopifyPage([orderEdge('3', 'cursor-3', ['Placed', 'company: Acme'])]),
+        );
+
+      const firstPage = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        2,
+      );
+      const secondPage = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        2,
+        firstPage.pageInfo.endCursor,
+      );
+
+      expect(firstPage.orders.map((order) => order.name)).toEqual([
+        '#D1',
+        '#D2',
+      ]);
+      expect(secondPage.orders.map((order) => order.name)).toEqual(['#D3']);
+      expect(axiosRequest(1).data.variables.after).toBe('cursor-2');
+    });
+  });
+
   it('keeps My Orders server-side filtering and caps pages at ten', async () => {
     mockedAxios.mockResolvedValueOnce(shopifyPage([]));
 
