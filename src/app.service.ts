@@ -1684,7 +1684,12 @@ export class AppService {
     try {
       const query = `
       query GetDraftOrders($first: Int!, $after: String) {
-        draftOrders(first: $first, after: $after) {
+        draftOrders(
+          first: $first
+          after: $after
+          sortKey: CREATED_AT
+          reverse: true
+        ) {
           pageInfo {
             hasNextPage
             endCursor

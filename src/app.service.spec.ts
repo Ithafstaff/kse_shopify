@@ -527,6 +527,15 @@ describe('AppService order pagination', () => {
       searchQuery: 'customer_id:123 -tag:Placed -tag:ShipRequested',
     });
   });
+
+  it('requests all draft orders newest first from Shopify', async () => {
+    mockedAxios.mockResolvedValueOnce(shopifyPage([]));
+
+    await service.getDraftOrders();
+
+    expect(axiosRequest(0).data.query).toContain('sortKey: CREATED_AT');
+    expect(axiosRequest(0).data.query).toContain('reverse: true');
+  });
 });
 
 describe('AppService customer pagination', () => {
