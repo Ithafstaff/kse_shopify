@@ -8,7 +8,7 @@ const mockedAxios = axios as jest.MockedFunction<typeof axios>;
 
 function axiosRequest(index: number) {
   return mockedAxios.mock.calls[index][0] as unknown as {
-    data: { variables: Record<string, unknown> };
+    data: { query: string; variables: Record<string, unknown> };
   };
 }
 
@@ -417,6 +417,13 @@ describe('AppService order pagination', () => {
         '#D2',
         '#D3',
       ]);
+      expect(axiosRequest(0).data).toMatchObject({
+        variables: {
+          first: 50,
+          searchQuery: 'tag:Placed',
+        },
+      });
+      expect(axiosRequest(0).data.query).toContain('sortKey: NUMBER');
     });
 
     it('filters combined orders by PO across personal and company matches', async () => {
