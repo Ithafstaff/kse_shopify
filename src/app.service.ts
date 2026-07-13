@@ -2184,6 +2184,167 @@ export class AppService {
   }
 
   // Get all draft orders of a customer
+  async getCustomerOrderDetails(
+    orderId: string,
+    customerId: string,
+    company?: string,
+  ): Promise<DraftOrder> {
+    const numericOrderId = orderId.split('/').pop();
+    const numericCustomerId = customerId.split('/').pop();
+
+    if (!numericOrderId || !/^\d+$/.test(numericOrderId)) {
+      throw new Error('Invalid Shopify order ID.');
+    }
+
+    if (!numericCustomerId || !/^\d+$/.test(numericCustomerId)) {
+      throw new Error('Invalid Shopify customer ID.');
+    }
+
+    const formattedOrderId = orderId.startsWith('gid://shopify/DraftOrder/')
+      ? orderId
+      : `gid://shopify/DraftOrder/${numericOrderId}`;
+
+    const query = `
+      query GetCustomerOrderDetails($id: ID!) {
+        draftOrder(id: $id) {
+          id
+          name
+          note
+          createdAt
+          customer {
+            id
+          }
+          tags
+          shippingAddress {
+            address1
+            city
+            province
+            country
+            zip
+          }
+          shippingLine {
+            title
+            price
+          }
+          lineItems(first: 10) {
+            edges {
+              node {
+                id
+                title
+                quantity
+                appliedDiscount {
+                  value
+                  valueType
+                }
+                variant {
+                  id
+                  title
+                  price
+                  metafields(first: 5) {
+                    nodes {
+                      key
+                      value
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await axios({
+        url: this.shopifyApiUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': this.shopifyAccessToken,
+        },
+        data: {
+          query,
+          variables: { id: formattedOrderId },
+        },
+      });
+
+      if (response.data.errors?.length) {
+        throw new Error(
+          response.data.errors
+            .map((error: { message: string }) => error.message)
+            .join('; '),
+        );
+      }
+
+      const order = response.data.data?.draftOrder;
+      const orderTags = order?.tags || [];
+      const isPersonalOrder =
+        order?.customer?.id === `gid://shopify/Customer/${numericCustomerId}`;
+      const isCompanyOrder = Boolean(
+        company?.trim() && this.orderMatchesCompany(orderTags, company.trim()),
+      );
+
+      if (!order || !orderTags.includes('Placed') || (!isPersonalOrder && !isCompanyOrder)) {
+        throw new Error('Order not found or not accessible.');
+      }
+
+      return {
+        id: order.id,
+        name: order.name || null,
+        note: order.note || null,
+        createdAt: order.createdAt || null,
+        customer: order.customer ? { id: order.customer.id } : null,
+        tags: orderTags,
+        shippingAddress: order.shippingAddress
+          ? {
+            address1: order.shippingAddress.address1,
+            city: order.shippingAddress.city,
+            province: order.shippingAddress.province,
+            country: order.shippingAddress.country,
+            zip: order.shippingAddress.zip,
+          }
+          : null,
+        shippingLine: order.shippingLine
+          ? {
+            title: order.shippingLine.title,
+            price: Number(order.shippingLine.price) || 0,
+          }
+          : null,
+        lineItems:
+          order.lineItems?.edges.map((lineItemEdge) => ({
+            id: lineItemEdge.node.id,
+            title: lineItemEdge.node.title,
+            quantity: lineItemEdge.node.quantity,
+            appliedDiscount: lineItemEdge.node.appliedDiscount
+              ? {
+                value: lineItemEdge.node.appliedDiscount.value,
+                valueType: lineItemEdge.node.appliedDiscount.valueType,
+              }
+              : null,
+            variant: lineItemEdge.node.variant
+              ? {
+                id: lineItemEdge.node.variant.id,
+                title: lineItemEdge.node.variant.title,
+                price: lineItemEdge.node.variant.price,
+                metafields: lineItemEdge.node.variant.metafields?.nodes || [],
+              }
+              : null,
+          })) || [],
+      };
+    } catch (error) {
+      if (error.message === 'Order not found or not accessible.') {
+        throw error;
+      }
+
+      console.error(
+        'Error fetching customer order details:',
+        error.response?.data || error.message,
+      );
+
+      throw new Error('Failed to fetch customer order details.');
+    }
+  }
+
   async getDraftOrderById(id: string): Promise<DraftOrder> {
     try {
       const formattedId = id.startsWith('gid://shopify/DraftOrder/')

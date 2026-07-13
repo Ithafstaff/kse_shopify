@@ -56,6 +56,15 @@ export class AppResolver {
     return this.appService.getDraftOrderById(id);
   }
 
+  @Query(() => DraftOrder, { nullable: true })
+  async getCustomerOrderDetails(
+    @Args('orderId', { type: () => String }) orderId: string,
+    @Args('customerId', { type: () => String }) customerId: string,
+    @Args('company', { type: () => String, nullable: true }) company?: string,
+  ): Promise<DraftOrder> {
+    return this.appService.getCustomerOrderDetails(orderId, customerId, company);
+  }
+
   @Query(() => Boolean)
   async isDraftOrderCompleted(@Args('id') id: string): Promise<boolean> {
     return this.appService.isDraftOrderCompleted(id);
