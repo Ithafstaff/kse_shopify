@@ -17,6 +17,7 @@ describe('AppResolver requestShippingFee', () => {
     updateDraftOrderAddress: jest.Mock;
     sendShippingQuoteEmails: jest.Mock;
     getDraftOrders: jest.Mock;
+    getRequestedShippingDraftOrdersPageByCustomerId: jest.Mock;
   };
   let resolver: AppResolver;
 
@@ -25,6 +26,7 @@ describe('AppResolver requestShippingFee', () => {
       updateDraftOrderAddress: jest.fn().mockResolvedValue(true),
       sendShippingQuoteEmails: jest.fn().mockResolvedValue(true),
       getDraftOrders: jest.fn(),
+      getRequestedShippingDraftOrdersPageByCustomerId: jest.fn(),
     };
     resolver = new AppResolver(appService as unknown as AppService);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -143,5 +145,26 @@ describe('AppResolver requestShippingFee', () => {
       'gid://shopify/DraftOrder/1001',
       'gid://shopify/DraftOrder/1002',
     ]);
+  });
+
+  it('delegates Requested Shipping pagination to the service', async () => {
+    const page = {
+      orders: [{ id: 'gid://shopify/DraftOrder/1001' }],
+      pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+    };
+    appService.getRequestedShippingDraftOrdersPageByCustomerId.mockResolvedValue(
+      page,
+    );
+
+    await expect(
+      resolver.getRequestedShippingDraftOrdersPageByCustomerId(
+        'gid://shopify/Customer/123',
+        10,
+        'cursor-0',
+      ),
+    ).resolves.toEqual(page);
+    expect(
+      appService.getRequestedShippingDraftOrdersPageByCustomerId,
+    ).toHaveBeenCalledWith('gid://shopify/Customer/123', 10, 'cursor-0');
   });
 });

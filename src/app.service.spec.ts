@@ -49,10 +49,12 @@ function orderEdge(
 function shopifyPage(
   edges: ReturnType<typeof orderEdge>[],
   hasNextPage = false,
+  count?: number,
 ) {
   return {
     data: {
       data: {
+        ...(count === undefined ? {} : { draftOrdersCount: { count } }),
         draftOrders: {
           edges,
           pageInfo: {
@@ -526,6 +528,37 @@ describe('AppService order pagination', () => {
       first: 10,
       searchQuery: 'customer_id:123 -tag:Placed -tag:ShipRequested',
     });
+  });
+
+  it('keeps Requested Shipping server-side filtered, paginated, and includes shipping data', async () => {
+    mockedAxios.mockResolvedValueOnce(
+      shopifyPage(
+        [orderEdge('9', 'cursor-9', ['ShipRequested'], '12.50')],
+        false,
+        1,
+      ),
+    );
+
+    const result = await service.getRequestedShippingDraftOrdersPageByCustomerId(
+      'gid://shopify/Customer/123',
+      50,
+    );
+
+    expect(result.orders).toMatchObject([
+      {
+        id: 'gid://shopify/DraftOrder/9',
+        tags: ['ShipRequested'],
+        shippingLine: { title: 'Shipping', price: 12.5 },
+      },
+    ]);
+    expect(result.pageInfo.totalCount).toBe(1);
+    expect(axiosRequest(0).data.variables).toMatchObject({
+      first: 10,
+      searchQuery: 'customer_id:123 tag:ShipRequested -tag:Placed',
+    });
+    expect(axiosRequest(0).data.query).toContain('sortKey: NUMBER');
+    expect(axiosRequest(0).data.query).toContain('reverse: true');
+    expect(axiosRequest(0).data.query).toContain('shippingLine {');
   });
 
   it('requests all draft orders with Shopify-supported oldest-first ordering', async () => {
