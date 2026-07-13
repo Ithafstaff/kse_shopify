@@ -155,6 +155,19 @@ export class AppResolver {
     );
   }
 
+  @Query(() => DraftOrderPage)
+  async getRequestedShippingDraftOrdersPageByCustomerId(
+    @Args('customerId', { type: () => String }) customerId: string,
+    @Args('first', { type: () => Int, defaultValue: 10 }) first: number,
+    @Args('after', { type: () => String, nullable: true }) after?: string,
+  ): Promise<DraftOrderPage> {
+    return this.appService.getRequestedShippingDraftOrdersPageByCustomerId(
+      customerId,
+      first,
+      after,
+    );
+  }
+
   @Query(() => CompanyDraftOrderPage)
   async getCompanyDraftOrdersPage(
     @Args('company', { type: () => String }) company: string,

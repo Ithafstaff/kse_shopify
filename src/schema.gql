@@ -141,6 +141,7 @@ type DraftOrderPage {
 type DraftOrderPageInfo {
   hasNextPage: Boolean!
   endCursor: String
+  totalCount: Int
 }
 
 type CompanyDraftOrderPage {
@@ -178,6 +179,7 @@ type Query {
   getDraftOrdersByCustomerId(customerId: String!, includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
   getDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
   getSavedDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
+  getRequestedShippingDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
   getCompanyDraftOrdersPage(company: String!, first: Int! = 10, after: String, poSearch: String): CompanyDraftOrderPage!
   getCombinedDraftOrdersPage(customerId: String!, company: String!, first: Int! = 10, after: String, poSearch: String): CompanyDraftOrderPage!
   getAllDraftOrdersWithTags(includeTags: [String!], excludeTags: [String!]): [DraftOrder!]

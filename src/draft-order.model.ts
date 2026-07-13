@@ -1,4 +1,4 @@
-import { Field, ObjectType } from '@nestjs/graphql';
+import { Field, Int, ObjectType } from '@nestjs/graphql';
 import { ShippingAddress } from './shipping-address.module';
 
 @ObjectType()
@@ -219,6 +219,9 @@ export class DraftOrderPageInfo {
 
   @Field({ nullable: true })
   endCursor?: string;
+
+  @Field(() => Int, { nullable: true })
+  totalCount?: number;
 }
 
 @ObjectType()
