@@ -600,6 +600,32 @@ describe('AppService order pagination', () => {
       ).rejects.toThrow('Order not found or not accessible.');
       expect(mockedAxios).toHaveBeenCalledTimes(1);
     });
+
+    it('logs structured Shopify failure context while keeping the client error generic', async () => {
+      const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      const shopifyError = {
+        errors: [{ message: 'Field "shippingLine" does not exist' }],
+      };
+      mockedAxios.mockRejectedValueOnce({ response: { data: shopifyError } });
+
+      await expect(
+        (service as any).getCustomerOrderDetails(
+          '1001',
+          'gid://shopify/Customer/123',
+          'Acme',
+        ),
+      ).rejects.toThrow('Failed to fetch customer order details.');
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Error fetching customer order details:',
+        expect.objectContaining({
+          orderId: '1001',
+          customerId: '123',
+          shopifyError,
+        }),
+      );
+      errorSpy.mockRestore();
+    });
   });
 
   it('keeps My Orders server-side filtering and caps pages at ten', async () => {
