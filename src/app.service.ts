@@ -2336,10 +2336,11 @@ export class AppService {
         throw error;
       }
 
-      console.error(
-        'Error fetching customer order details:',
-        error.response?.data || error.message,
-      );
+      console.error('Error fetching customer order details:', {
+        orderId: numericOrderId,
+        customerId: numericCustomerId,
+        shopifyError: error.response?.data || error.message,
+      });
 
       throw new Error('Failed to fetch customer order details.');
     }
