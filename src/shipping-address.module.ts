@@ -2,21 +2,21 @@ import { ObjectType, Field } from '@nestjs/graphql';
 
 @ObjectType()
 export class ShippingAddress {
-  @Field()
-  address1: string;
+  @Field({ nullable: true })
+  address1?: string;
 
-  @Field()
-  city: string;
+  @Field({ nullable: true })
+  city?: string;
 
-  @Field()
-  province: string;
+  @Field({ nullable: true })
+  province?: string;
   
   @Field({ nullable: true })
   company?: string;
 
-  @Field()
-  country: string;
+  @Field({ nullable: true })
+  country?: string;
 
-  @Field()
-  zip: string;
+  @Field({ nullable: true })
+  zip?: string;
 }

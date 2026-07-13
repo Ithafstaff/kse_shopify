@@ -39,12 +39,12 @@ type CustomerPage {
 }
 
 type ShippingAddress {
-  address1: String!
-  city: String!
-  province: String!
+  address1: String
+  city: String
+  province: String
   company: String
-  country: String!
-  zip: String!
+  country: String
+  zip: String
 }
 
 type Metafield {

@@ -30,6 +30,7 @@ function orderEdge(
   cursor: string,
   tags: string[],
   shippingPrice = '0.00',
+  shippingAddress = null,
 ) {
   return {
     cursor,
@@ -39,7 +40,7 @@ function orderEdge(
       createdAt: '2026-07-01T00:00:00Z',
       customer: { id: 'gid://shopify/Customer/1' },
       tags,
-      shippingAddress: null,
+      shippingAddress,
       shippingLine: { title: 'Shipping', price: shippingPrice },
       lineItems: { edges: [] },
     },
@@ -559,6 +560,43 @@ describe('AppService order pagination', () => {
     expect(axiosRequest(0).data.query).toContain('sortKey: NUMBER');
     expect(axiosRequest(0).data.query).toContain('reverse: true');
     expect(axiosRequest(0).data.query).toContain('shippingLine {');
+  });
+
+  it('preserves incomplete legacy shipping addresses for read-only display', async () => {
+    mockedAxios.mockResolvedValueOnce(
+      shopifyPage(
+        [
+          orderEdge(
+            'legacy-1',
+            'cursor-legacy-1',
+            ['ShipRequested'],
+            '0.00',
+            {
+              address1: '123 Main Street',
+              city: 'Albany',
+              province: null,
+              country: 'United States',
+              zip: null,
+            },
+          ),
+        ],
+        false,
+        1,
+      ),
+    );
+
+    const result = await service.getRequestedShippingDraftOrdersPageByCustomerId(
+      'gid://shopify/Customer/123',
+      10,
+    );
+
+    expect(result.orders[0].shippingAddress).toEqual({
+      address1: '123 Main Street',
+      city: 'Albany',
+      province: null,
+      country: 'United States',
+      zip: null,
+    });
   });
 
   it('requests all draft orders with Shopify-supported oldest-first ordering', async () => {
