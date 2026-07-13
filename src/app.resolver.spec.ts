@@ -112,7 +112,7 @@ describe('AppResolver requestShippingFee', () => {
     expect(appService.sendShippingQuoteEmails).not.toHaveBeenCalled();
   });
 
-  it('returns requested shipping draft orders newest first', async () => {
+  it('preserves oldest-first order for requested shipping draft orders', async () => {
     appService.getDraftOrders.mockResolvedValue([
       {
         id: 'gid://shopify/DraftOrder/1001',
@@ -140,8 +140,8 @@ describe('AppResolver requestShippingFee', () => {
     );
 
     expect(orders.map((order) => order.id)).toEqual([
-      'gid://shopify/DraftOrder/1002',
       'gid://shopify/DraftOrder/1001',
+      'gid://shopify/DraftOrder/1002',
     ]);
   });
 });
