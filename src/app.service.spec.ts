@@ -501,6 +501,107 @@ describe('AppService order pagination', () => {
     });
   });
 
+  describe('getCustomerOrderDetails', () => {
+    it('fetches only the selected placed order with its detail fields', async () => {
+      mockedAxios.mockResolvedValueOnce({
+        data: {
+          data: {
+            draftOrder: {
+              id: 'gid://shopify/DraftOrder/1001',
+              name: '#D1001',
+              note: 'Leave at front desk',
+              createdAt: '2026-07-01T00:00:00Z',
+              customer: { id: 'gid://shopify/Customer/123' },
+              tags: ['Placed', 'company: Acme', 'PO: 1001'],
+              shippingAddress: {
+                address1: '123 Main Street',
+                city: 'Albany',
+                province: 'NY',
+                country: 'United States',
+                zip: '12207',
+              },
+              shippingLine: { title: 'Shipping', price: '12.50' },
+              lineItems: {
+                edges: [
+                  {
+                    node: {
+                      id: 'gid://shopify/LineItem/1',
+                      title: 'Bath Towel',
+                      quantity: 2,
+                      appliedDiscount: null,
+                      variant: {
+                        id: 'gid://shopify/ProductVariant/1',
+                        title: 'White',
+                        price: '10.00',
+                        metafields: {
+                          nodes: [{ key: 'description', value: 'Cotton' }],
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+
+      const result = await (service as any).getCustomerOrderDetails(
+        '1001',
+        'gid://shopify/Customer/123',
+        'Acme',
+      );
+
+      expect(result).toMatchObject({
+        id: 'gid://shopify/DraftOrder/1001',
+        name: '#D1001',
+        tags: ['Placed', 'company: Acme', 'PO: 1001'],
+        shippingLine: { title: 'Shipping', price: 12.5 },
+        lineItems: [
+          {
+            id: 'gid://shopify/LineItem/1',
+            title: 'Bath Towel',
+            quantity: 2,
+            variant: { title: 'White', price: '10.00' },
+          },
+        ],
+      });
+      expect(mockedAxios).toHaveBeenCalledTimes(1);
+      expect(axiosRequest(0).data.variables).toEqual({
+        id: 'gid://shopify/DraftOrder/1001',
+      });
+      expect(axiosRequest(0).data.query).toContain('draftOrder(id: $id)');
+      expect(axiosRequest(0).data.query).toContain('tags');
+      expect(axiosRequest(0).data.query).toContain('shippingLine');
+      expect(axiosRequest(0).data.query).not.toContain('draftOrders(');
+    });
+
+    it('rejects a placed order outside the customer or company scope', async () => {
+      mockedAxios.mockResolvedValueOnce({
+        data: {
+          data: {
+            draftOrder: {
+              id: 'gid://shopify/DraftOrder/2002',
+              name: '#D2002',
+              customer: { id: 'gid://shopify/Customer/999' },
+              tags: ['Placed', 'company: Other'],
+              lineItems: { edges: [] },
+            },
+          },
+        },
+      });
+
+      await expect(
+        (service as any).getCustomerOrderDetails(
+          '2002',
+          'gid://shopify/Customer/123',
+          'Acme',
+        ),
+      ).rejects.toThrow('Order not found or not accessible.');
+      expect(mockedAxios).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('keeps My Orders server-side filtering and caps pages at ten', async () => {
     mockedAxios.mockResolvedValueOnce(shopifyPage([]));
 

@@ -18,6 +18,7 @@ describe('AppResolver requestShippingFee', () => {
     sendShippingQuoteEmails: jest.Mock;
     getDraftOrders: jest.Mock;
     getRequestedShippingDraftOrdersPageByCustomerId: jest.Mock;
+    getCustomerOrderDetails: jest.Mock;
   };
   let resolver: AppResolver;
 
@@ -27,6 +28,7 @@ describe('AppResolver requestShippingFee', () => {
       sendShippingQuoteEmails: jest.fn().mockResolvedValue(true),
       getDraftOrders: jest.fn(),
       getRequestedShippingDraftOrdersPageByCustomerId: jest.fn(),
+      getCustomerOrderDetails: jest.fn(),
     };
     resolver = new AppResolver(appService as unknown as AppService);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -166,5 +168,23 @@ describe('AppResolver requestShippingFee', () => {
     expect(
       appService.getRequestedShippingDraftOrdersPageByCustomerId,
     ).toHaveBeenCalledWith('gid://shopify/Customer/123', 10, 'cursor-0');
+  });
+
+  it('delegates customer order details with the customer and company scope', async () => {
+    const order = { id: 'gid://shopify/DraftOrder/1001' };
+    appService.getCustomerOrderDetails.mockResolvedValue(order);
+
+    await expect(
+      (resolver as any).getCustomerOrderDetails(
+        '1001',
+        'gid://shopify/Customer/123',
+        'Acme',
+      ),
+    ).resolves.toEqual(order);
+    expect(appService.getCustomerOrderDetails).toHaveBeenCalledWith(
+      '1001',
+      'gid://shopify/Customer/123',
+      'Acme',
+    );
   });
 });
