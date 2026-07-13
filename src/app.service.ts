@@ -1687,8 +1687,8 @@ export class AppService {
         draftOrders(
           first: $first
           after: $after
-          sortKey: CREATED_AT
-          reverse: true
+          sortKey: NUMBER
+          reverse: false
         ) {
           pageInfo {
             hasNextPage

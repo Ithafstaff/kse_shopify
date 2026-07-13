@@ -528,13 +528,14 @@ describe('AppService order pagination', () => {
     });
   });
 
-  it('requests all draft orders newest first from Shopify', async () => {
+  it('requests all draft orders with Shopify-supported oldest-first ordering', async () => {
     mockedAxios.mockResolvedValueOnce(shopifyPage([]));
 
     await service.getDraftOrders();
 
-    expect(axiosRequest(0).data.query).toContain('sortKey: CREATED_AT');
-    expect(axiosRequest(0).data.query).toContain('reverse: true');
+    expect(axiosRequest(0).data.query).toContain('sortKey: NUMBER');
+    expect(axiosRequest(0).data.query).toContain('reverse: false');
+    expect(axiosRequest(0).data.query).not.toContain('sortKey: CREATED_AT');
   });
 });
 
