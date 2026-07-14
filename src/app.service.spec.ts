@@ -573,6 +573,7 @@ describe('AppService order pagination', () => {
       expect(axiosRequest(0).data.query).toContain('draftOrder(id: $id)');
       expect(axiosRequest(0).data.query).toContain('tags');
       expect(axiosRequest(0).data.query).toContain('shippingLine');
+      expect(axiosRequest(0).data.query).not.toMatch(/\bnote\b/);
       expect(axiosRequest(0).data.query).not.toContain('draftOrders(');
     });
 

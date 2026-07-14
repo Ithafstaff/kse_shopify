@@ -2209,7 +2209,6 @@ export class AppService {
         draftOrder(id: $id) {
           id
           name
-          note
           createdAt
           customer {
             id
