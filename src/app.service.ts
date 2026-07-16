@@ -2385,7 +2385,7 @@ export class AppService {
                                         variant {
                                             title
                                             price
-                                            metafields(first: 5) {
+                                            metafields(first: 20) {
                                                 nodes {
                                                     key
                                                     value

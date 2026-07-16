@@ -132,6 +132,62 @@ describe('AppService draft order address persistence', () => {
   });
 });
 
+describe('AppService draft order checkout metadata', () => {
+  let service: AppService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AppService(configService());
+  });
+
+  it('requests enough variant metafields for checkout item details', async () => {
+    mockedAxios.mockResolvedValueOnce({
+      data: {
+        data: {
+          draftOrder: {
+            id: 'gid://shopify/DraftOrder/1001',
+            name: '#D1001',
+            invoiceUrl: null,
+            createdAt: '2026-07-01T00:00:00Z',
+            shippingAddress: null,
+            lineItems: {
+              edges: [
+                {
+                  node: {
+                    title: 'Traditional Patient Gown',
+                    quantity: 2,
+                    appliedDiscount: null,
+                    variant: {
+                      title: 'IGE',
+                      price: '36.50',
+                      metafields: {
+                        nodes: [
+                          { key: 'color', value: 'White' },
+                          { key: 'packing', value: '10 dz/bl' },
+                          { key: 'size', value: 'Large' },
+                        ],
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    const result = await service.getDraftOrderById('1001');
+
+    expect(result.lineItems?.[0].variant?.metafields).toEqual([
+      { key: 'color', value: 'White' },
+      { key: 'packing', value: '10 dz/bl' },
+      { key: 'size', value: 'Large' },
+    ]);
+    expect(axiosRequest(0).data.query).toContain('metafields(first: 20)');
+  });
+});
+
 describe('AppService order pagination', () => {
   let service: AppService;
 
