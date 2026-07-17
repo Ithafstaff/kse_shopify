@@ -10,6 +10,7 @@ describe('ShippingAddress GraphQL output contract', () => {
 
     expect(shippingAddressType).toBeDefined();
     expect(shippingAddressType).toContain('address1: String');
+    expect(shippingAddressType).toContain('address2: String');
     expect(shippingAddressType).toContain('city: String');
     expect(shippingAddressType).toContain('province: String');
     expect(shippingAddressType).toContain('country: String');
@@ -19,5 +20,15 @@ describe('ShippingAddress GraphQL output contract', () => {
     expect(shippingAddressType).not.toContain('province: String!');
     expect(shippingAddressType).not.toContain('country: String!');
     expect(shippingAddressType).not.toContain('zip: String!');
+  });
+
+  it('exposes optional address line 2 in the shipping input contract', () => {
+    const schema = readFileSync(join(__dirname, 'schema.gql'), 'utf8');
+    const shippingAddressInput = schema.match(
+      /input ShippingAddressInput \{[\s\S]*?\n\}/,
+    )?.[0];
+
+    expect(shippingAddressInput).toBeDefined();
+    expect(shippingAddressInput).toContain('address2: String');
   });
 });

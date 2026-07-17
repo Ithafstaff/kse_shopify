@@ -40,6 +40,7 @@ type CustomerPage {
 
 type ShippingAddress {
   address1: String
+  address2: String
   city: String
   province: String
   company: String
@@ -214,6 +215,7 @@ type Mutation {
 
 input ShippingAddressInput {
   address1: String!
+  address2: String
   city: String!
   province: String!
   company: String

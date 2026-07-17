@@ -6,6 +6,9 @@ export class ShippingAddress {
   address1?: string;
 
   @Field({ nullable: true })
+  address2?: string;
+
+  @Field({ nullable: true })
   city?: string;
 
   @Field({ nullable: true })

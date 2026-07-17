@@ -1027,6 +1027,7 @@ export class AppService {
           ],
           shippingAddress: {
             address1: "${this.escapeGraphQLString(shippingAddress.address1)}",
+            address2: "${this.escapeGraphQLString(shippingAddress.address2 || '')}",
             city: "${this.escapeGraphQLString(shippingAddress.city)}",
             province: "${this.escapeGraphQLString(shippingAddress.province)}",
             country: "${this.escapeGraphQLString(shippingAddress.country)}",
@@ -1510,6 +1511,7 @@ export class AppService {
               tags
               shippingAddress {
                 address1
+                address2
                 city
                 province
                 country
@@ -1593,6 +1595,7 @@ export class AppService {
           shippingAddress: order.shippingAddress
             ? {
               address1: order.shippingAddress.address1,
+              address2: order.shippingAddress.address2,
               city: order.shippingAddress.city,
               province: order.shippingAddress.province,
               country: order.shippingAddress.country,
@@ -2575,6 +2578,7 @@ export class AppService {
               metafields: metafields,
               shippingAddress: {
                 address1: shippingAddress.address1,
+                address2: shippingAddress.address2 || '',
                 city: shippingAddress.city,
                 province: shippingAddress.province,
                 country: shippingAddress.country,
@@ -2627,6 +2631,7 @@ export class AppService {
             firstName: "${shippingAddress.firstName}",
             lastName: "${shippingAddress.lastName}",
             address1: "${shippingAddress.address1}",
+            address2: "${shippingAddress.address2 || ''}",
             city: "${shippingAddress.city}",
             province: "${shippingAddress.province}",
             company: "${shippingAddress.company}",
@@ -3357,6 +3362,7 @@ export class AppService {
       ${this.escapeHtml(shippingAddress.company)}<br>
       ${this.escapeHtml(shippingAddress.firstName)} ${this.escapeHtml(shippingAddress.lastName)}<br>
       ${this.escapeHtml(shippingAddress.address1)}<br>
+      ${shippingAddress.address2 ? `${this.escapeHtml(shippingAddress.address2)}<br>` : ''}
       ${this.escapeHtml(shippingAddress.city)}, ${this.escapeHtml(shippingAddress.province)} ${this.escapeHtml(shippingAddress.zip)}<br>
       ${this.escapeHtml(shippingAddress.country)}
     `;

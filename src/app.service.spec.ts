@@ -118,6 +118,7 @@ describe('AppService draft order address persistence', () => {
         lastName: 'Lovelace',
         company: 'Analytical Engine',
         address1: '123 Main Street',
+        address2: 'Suite 314',
         city: 'New York',
         province: 'NY',
         country: 'United States',
@@ -129,6 +130,7 @@ describe('AppService draft order address persistence', () => {
     const request = mockedAxiosPost.mock.calls[0][1] as { query: string };
     expect(request.query).toContain('firstName: "Ada"');
     expect(request.query).toContain('lastName: "Lovelace"');
+    expect(request.query).toContain('address2: "Suite 314"');
   });
 });
 
