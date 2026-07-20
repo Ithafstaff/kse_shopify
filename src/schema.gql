@@ -183,7 +183,7 @@ type Query {
   getSavedDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
   getRequestedShippingDraftOrdersPageByCustomerId(customerId: String!, first: Int! = 10, after: String): DraftOrderPage!
   getCompanyDraftOrdersPage(company: String!, first: Int! = 10, after: String, poSearch: String): CompanyDraftOrderPage!
-  getCombinedDraftOrdersPage(customerId: String!, company: String!, first: Int! = 10, after: String, poSearch: String): CompanyDraftOrderPage!
+  getCombinedDraftOrdersPage(customerId: String!, company: String!, first: Int! = 10, after: String, search: String): CompanyDraftOrderPage!
   getAllDraftOrdersWithTags(includeTags: [String!], excludeTags: [String!]): [DraftOrder!]
   checkForShippingFee(draftOrderId: String!): String
   getCompanyPriceLevel: JSONObject

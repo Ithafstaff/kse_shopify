@@ -100,6 +100,64 @@ export class AppService {
     });
   }
 
+  private normalizeOrderSearchValue(value: unknown): string {
+    return String(value ?? '').trim().toLowerCase();
+  }
+
+  private orderTagValue(tags: string[] = [], prefix: string): string {
+    const tag = tags.find((value) => value.startsWith(prefix));
+    return tag ? tag.slice(prefix.length).trim() : '';
+  }
+
+  private orderMatchesSearch(order: any, search?: string): boolean {
+    const requestedSearch = this.normalizeOrderSearchValue(search);
+    if (!requestedSearch) return true;
+
+    const tags = Array.isArray(order.tags) ? order.tags : [];
+    const customerFirstName =
+      order.customer?.firstName || this.orderTagValue(tags, 'FirstName:');
+    const customerLastName =
+      order.customer?.lastName || this.orderTagValue(tags, 'LastName:');
+    const searchableValues = [
+      order.name,
+      order.note2,
+      customerFirstName,
+      customerLastName,
+      `${customerFirstName} ${customerLastName}`.trim(),
+      order.customer?.email,
+      order.shippingAddress?.address1,
+      order.shippingAddress?.address2,
+      order.shippingAddress?.city,
+      order.shippingAddress?.province,
+      order.shippingAddress?.country,
+      order.shippingAddress?.zip,
+      order.shippingAddress?.company,
+      this.orderTagValue(tags, 'FirstName:'),
+      this.orderTagValue(tags, 'LastName:'),
+      this.orderTagValue(tags, 'email:'),
+      this.orderTagValue(tags, 'company:'),
+      this.orderTagValue(tags, 'PO:'),
+      this.orderTagValue(tags, 'Address1:'),
+      this.orderTagValue(tags, 'Address2:'),
+      this.orderTagValue(tags, 'City:'),
+      this.orderTagValue(tags, 'Province:'),
+      this.orderTagValue(tags, 'Country:'),
+      this.orderTagValue(tags, 'Zip:'),
+      this.orderTagValue(tags, 'NOTES:'),
+      ...(order.lineItems?.edges || []).flatMap((edge) => [
+        edge.node?.title,
+        edge.node?.name,
+        edge.node?.sku,
+        edge.node?.variant?.title,
+      ]),
+    ];
+
+    return searchableValues.some(
+      (value) =>
+        this.normalizeOrderSearchValue(value).includes(requestedSearch),
+    );
+  }
+
   escapeGraphQLString(str: string): string {
     if (!str) return '';
     return str
@@ -3103,7 +3161,7 @@ export class AppService {
     company: string,
     first = 10,
     after?: string,
-    poSearch?: string,
+    search?: string,
   ): Promise<CompanyDraftOrderPage> {
     const numericCustomerId = customerId.split('/').pop();
 
@@ -3147,10 +3205,12 @@ export class AppService {
               id
               name
               createdAt
-              customer { id }
+              customer { id firstName lastName email }
+              note2
               tags
               shippingAddress {
                 address1
+                address2
                 city
                 province
                 country
@@ -3165,6 +3225,8 @@ export class AppService {
                 edges {
                   node {
                     title
+                    name
+                    sku
                     quantity
                     appliedDiscount {
                       value
@@ -3242,13 +3304,21 @@ export class AppService {
 
           if (
             (isPersonalOrder || isCompanyOrder) &&
-            this.orderMatchesPoSearch(order.tags || [], poSearch)
+            this.orderMatchesSearch(order, search)
           ) {
             orders.push({
               id: order.id,
               name: order.name,
               createdAt: order.createdAt,
-              customer: order.customer ? { id: order.customer.id } : null,
+              note: order.note2 || null,
+              customer: order.customer
+                ? {
+                  id: order.customer.id,
+                  firstName: order.customer.firstName || null,
+                  lastName: order.customer.lastName || null,
+                  email: order.customer.email || null,
+                }
+                : null,
               orderType: isCompanyOrder && !isPersonalOrder ? 'Company' : 'Personal',
               tags: order.tags || [],
               shippingAddress: order.shippingAddress || null,
@@ -3261,6 +3331,8 @@ export class AppService {
               lineItems:
                 order.lineItems?.edges.map((lineItemEdge) => ({
                   title: lineItemEdge.node.title,
+                  name: lineItemEdge.node.name || null,
+                  sku: lineItemEdge.node.sku || null,
                   quantity: lineItemEdge.node.quantity,
                   appliedDiscount: lineItemEdge.node.appliedDiscount || null,
                   variant: lineItemEdge.node.variant

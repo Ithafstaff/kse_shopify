@@ -31,6 +31,7 @@ function orderEdge(
   tags: string[],
   shippingPrice = '0.00',
   shippingAddress = null,
+  overrides: Record<string, unknown> = {},
 ) {
   return {
     cursor,
@@ -43,8 +44,63 @@ function orderEdge(
       shippingAddress,
       shippingLine: { title: 'Shipping', price: shippingPrice },
       lineItems: { edges: [] },
+      ...overrides,
     },
   };
+}
+
+function searchableOrderEdge() {
+  return orderEdge(
+    '99',
+    'cursor-99',
+    [
+      'Placed',
+      'company: Acme Medical',
+      'FirstName: Ada',
+      'LastName: Lovelace',
+      'email: ada@example.com',
+      'PO: PO-99',
+      'Address1: 123 Main Street',
+      'Address2: Suite 2',
+      'City: New York',
+      'Province: NY',
+      'Country: United States',
+      'Zip: 10001',
+      'NOTES: Leave at front desk',
+    ],
+    '0.00',
+    {
+      address1: '123 Main Street',
+      address2: 'Suite 2',
+      city: 'New York',
+      province: 'NY',
+      country: 'United States',
+      zip: '10001',
+      company: 'Acme Medical',
+    },
+    {
+      note2: 'Leave at front desk',
+      customer: {
+        id: 'gid://shopify/Customer/1',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        email: 'ada@example.com',
+      },
+      lineItems: {
+        edges: [
+          {
+            node: {
+              title: 'Bath Towel',
+              name: 'Bath Towel',
+              sku: 'TOWEL-001',
+              quantity: 1,
+              variant: { title: 'White', price: '10.00' },
+            },
+          },
+        ],
+      },
+    },
+  );
 }
 
 function shopifyPage(
@@ -556,6 +612,98 @@ describe('AppService order pagination', () => {
       ]);
       expect(secondPage.orders.map((order) => order.name)).toEqual(['#D3']);
       expect(axiosRequest(1).data.variables.after).toBe('cursor-2');
+    });
+
+    it.each([
+      ['order number', '#D99'],
+      ['customer first name', 'Ada'],
+      ['customer last name', 'Lovelace'],
+      ['customer full name', 'Ada Lovelace'],
+      ['customer email', 'ada@example.com'],
+      ['company', 'Acme Medical'],
+      ['PO number', 'PO-99'],
+      ['address line 1', '123 Main'],
+      ['address line 2', 'Suite 2'],
+      ['city', 'New York'],
+      ['province', 'NY'],
+      ['country', 'United States'],
+      ['ZIP', '10001'],
+      ['product title', 'Bath Towel'],
+      ['variant title', 'White'],
+      ['SKU', 'TOWEL-001'],
+      ['note', 'Leave at front desk'],
+      ['NOTES tag', 'front desk'],
+    ])('searches combined Order History by %s', async (_field, search) => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([searchableOrderEdge()]),
+      );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme Medical',
+        10,
+        undefined,
+        search,
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D99']);
+    });
+
+    it('requests the customer, note, and SKU fields used by general search', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([searchableOrderEdge()]),
+      );
+
+      await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme Medical',
+        10,
+      );
+
+      expect(axiosRequest(0).data.query).toMatch(
+        /customer \{\s*id\s*firstName\s*lastName\s*email\s*\}/,
+      );
+      expect(axiosRequest(0).data.query).toContain('note2');
+      expect(axiosRequest(0).data.query).toMatch(/node \{[\s\S]*sku/);
+    });
+
+    it('scans later Shopify pages for a general search match', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(
+          shopifyPage(
+            [orderEdge('1', 'cursor-1', ['Placed', 'company: Acme'])],
+            true,
+          ),
+        )
+        .mockResolvedValueOnce(
+          shopifyPage([
+            orderEdge(
+              '2',
+              'cursor-2',
+              ['Placed', 'company: Acme'],
+              '0.00',
+              null,
+              {
+                lineItems: {
+                  edges: [
+                    { node: { title: 'Widget', sku: 'SKU-002', quantity: 1 } },
+                  ],
+                },
+              },
+            ),
+          ]),
+        );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        'SKU-002',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D2']);
+      expect(axiosRequest(1).data.variables.after).toBe('cursor-1');
     });
   });
 
