@@ -198,14 +198,14 @@ export class AppResolver {
     @Args('company', { type: () => String }) company: string,
     @Args('first', { type: () => Int, defaultValue: 10 }) first: number,
     @Args('after', { type: () => String, nullable: true }) after?: string,
-    @Args('poSearch', { type: () => String, nullable: true }) poSearch?: string,
+    @Args('search', { type: () => String, nullable: true }) search?: string,
   ): Promise<CompanyDraftOrderPage> {
     return this.appService.getCombinedDraftOrdersPage(
       customerId,
       company,
       first,
       after,
-      poSearch,
+      search,
     );
   }
 
