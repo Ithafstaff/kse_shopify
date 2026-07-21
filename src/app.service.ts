@@ -3206,6 +3206,9 @@ export class AppService {
               name
               createdAt
               customer { id firstName lastName email }
+              order {
+                id
+              }
               note2
               tags
               shippingAddress {
@@ -3303,6 +3306,7 @@ export class AppService {
             this.orderMatchesCompany(order.tags || [], requestedCompany);
 
           if (
+            order.order?.id &&
             (isPersonalOrder || isCompanyOrder) &&
             this.orderMatchesSearch(order, search)
           ) {

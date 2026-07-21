@@ -41,6 +41,7 @@ function orderEdge(
       createdAt: '2026-07-01T00:00:00Z',
       customer: { id: 'gid://shopify/Customer/1' },
       tags,
+      order: { id: `gid://shopify/Order/${id}` },
       shippingAddress,
       shippingLine: { title: 'Shipping', price: shippingPrice },
       lineItems: { edges: [] },
@@ -543,6 +544,44 @@ describe('AppService order pagination', () => {
       expect(axiosRequest(0).data.query).toContain('sortKey: NUMBER');
     });
 
+    it('omits placed draft orders without linked Shopify orders and scans later pages', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(
+          shopifyPage(
+            [
+              orderEdge(
+                'stale',
+                'cursor-stale',
+                ['Placed', 'company: Acme'],
+                '0.00',
+                null,
+                { order: null },
+              ),
+            ],
+            true,
+          ),
+        )
+        .mockResolvedValueOnce(
+          shopifyPage([
+            orderEdge('valid', 'cursor-valid', ['Placed', 'company: Acme']),
+          ]),
+        );
+
+      try {
+        const result = await service.getCombinedDraftOrdersPage(
+          'gid://shopify/Customer/1',
+          'Acme',
+          1,
+        );
+
+        expect(result.orders.map((order) => order.name)).toEqual(['#Dvalid']);
+        expect(mockedAxios).toHaveBeenCalledTimes(2);
+        expect(axiosRequest(1).data.variables.after).toBe('cursor-stale');
+      } finally {
+        mockedAxios.mockReset();
+      }
+    });
+
     it('filters combined orders by PO across personal and company matches', async () => {
       mockedAxios.mockResolvedValueOnce(
         shopifyPage([
@@ -663,6 +702,7 @@ describe('AppService order pagination', () => {
       expect(axiosRequest(0).data.query).toMatch(
         /customer \{\s*id\s*firstName\s*lastName\s*email\s*\}/,
       );
+      expect(axiosRequest(0).data.query).toMatch(/order\s*\{\s*id\s*\}/);
       expect(axiosRequest(0).data.query).toContain('note2');
       expect(axiosRequest(0).data.query).toMatch(/node \{[\s\S]*sku/);
     });
