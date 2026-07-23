@@ -1247,7 +1247,11 @@ export class AppService {
               customer { id }
               tags
               shippingAddress {
+                firstName
+                lastName
+                company
                 address1
+                address2
                 city
                 province
                 country
@@ -1324,7 +1328,11 @@ export class AppService {
           tags: order.tags || [],
           shippingAddress: order.shippingAddress
             ? {
+              firstName: order.shippingAddress.firstName,
+              lastName: order.shippingAddress.lastName,
+              company: order.shippingAddress.company,
               address1: order.shippingAddress.address1,
+              address2: order.shippingAddress.address2,
               city: order.shippingAddress.city,
               province: order.shippingAddress.province,
               country: order.shippingAddress.country,
@@ -1407,6 +1415,10 @@ export class AppService {
               tags
               shippingAddress {
                 address1
+                address2
+                firstName
+                lastName
+                company
                 city
                 province
                 country
@@ -1483,7 +1495,11 @@ export class AppService {
           tags: order.tags || [],
           shippingAddress: order.shippingAddress
             ? {
+              firstName: order.shippingAddress.firstName,
+              lastName: order.shippingAddress.lastName,
+              company: order.shippingAddress.company,
               address1: order.shippingAddress.address1,
+              address2: order.shippingAddress.address2,
               city: order.shippingAddress.city,
               province: order.shippingAddress.province,
               country: order.shippingAddress.country,
@@ -1568,6 +1584,9 @@ export class AppService {
               customer { id }
               tags
               shippingAddress {
+                firstName
+                lastName
+                company
                 address1
                 address2
                 city
@@ -1652,6 +1671,9 @@ export class AppService {
           tags: order.tags || [],
           shippingAddress: order.shippingAddress
             ? {
+              firstName: order.shippingAddress.firstName,
+              lastName: order.shippingAddress.lastName,
+              company: order.shippingAddress.company,
               address1: order.shippingAddress.address1,
               address2: order.shippingAddress.address2,
               city: order.shippingAddress.city,
@@ -2429,6 +2451,10 @@ export class AppService {
                             createdAt
                             shippingAddress {
                                 address1
+                                address2
+                                firstName
+                                lastName
+                                company
                                 city
                                 province
                                 country
@@ -2682,21 +2708,8 @@ export class AppService {
       : `gid://shopify/DraftOrder/${draftOrderId}`; // Add prefix if it's missing
 
     const mutation = `
-      mutation {
-        draftOrderUpdate(id: "${formattedDraftOrderId}", input: {
-          email: "${email}",
-          shippingAddress: {
-            firstName: "${shippingAddress.firstName}",
-            lastName: "${shippingAddress.lastName}",
-            address1: "${shippingAddress.address1}",
-            address2: "${shippingAddress.address2 || ''}",
-            city: "${shippingAddress.city}",
-            province: "${shippingAddress.province}",
-            company: "${shippingAddress.company}",
-            country: "${shippingAddress.country}",
-            zip: "${shippingAddress.zip}"
-          }
-        }) {
+      mutation UpdateDraftOrderAddress($id: ID!, $input: DraftOrderInput!) {
+        draftOrderUpdate(id: $id, input: $input) {
           draftOrder {
             id
           }
@@ -2711,7 +2724,26 @@ export class AppService {
     try {
       const response = await axios.post(
         this.shopifyApiUrl,
-        { query: mutation },
+        {
+          query: mutation,
+          variables: {
+            id: formattedDraftOrderId,
+            input: {
+              email,
+              shippingAddress: {
+                firstName: shippingAddress.firstName,
+                lastName: shippingAddress.lastName,
+                address1: shippingAddress.address1,
+                address2: shippingAddress.address2 || '',
+                city: shippingAddress.city,
+                province: shippingAddress.province,
+                company: shippingAddress.company || '',
+                country: shippingAddress.country,
+                zip: shippingAddress.zip,
+              },
+            },
+          },
+        },
         {
           headers: {
             'Content-Type': 'application/json',

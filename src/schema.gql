@@ -39,6 +39,8 @@ type CustomerPage {
 }
 
 type ShippingAddress {
+  firstName: String
+  lastName: String
   address1: String
   address2: String
   city: String
