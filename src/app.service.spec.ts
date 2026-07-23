@@ -173,8 +173,8 @@ describe('AppService draft order address persistence', () => {
       {
         firstName: 'Ada',
         lastName: 'Lovelace',
-        company: 'Analytical Engine',
-        address1: '123 Main Street',
+        company: 'Analytical "Engine" \\ Lab',
+        address1: '123 "Main" Street',
         address2: 'Suite 314',
         city: 'New York',
         province: 'NY',
@@ -184,10 +184,39 @@ describe('AppService draft order address persistence', () => {
       'ada@example.com',
     );
 
-    const request = mockedAxiosPost.mock.calls[0][1] as { query: string };
-    expect(request.query).toContain('firstName: "Ada"');
-    expect(request.query).toContain('lastName: "Lovelace"');
-    expect(request.query).toContain('address2: "Suite 314"');
+    const request = mockedAxiosPost.mock.calls[0][1] as {
+      query: string;
+      variables: {
+        id: string;
+        input: {
+          email: string;
+          shippingAddress: Record<string, string>;
+        };
+      };
+    };
+    expect(request.query).toContain(
+      'mutation UpdateDraftOrderAddress($id: ID!, $input: DraftOrderInput!)',
+    );
+    expect(request.query).toContain('draftOrderUpdate(id: $id, input: $input)');
+    expect(request.query).not.toContain('Ada');
+    expect(request.query).not.toContain('Main');
+    expect(request.variables).toEqual({
+      id: 'gid://shopify/DraftOrder/1001',
+      input: {
+        email: 'ada@example.com',
+        shippingAddress: {
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          company: 'Analytical "Engine" \\ Lab',
+          address1: '123 "Main" Street',
+          address2: 'Suite 314',
+          city: 'New York',
+          province: 'NY',
+          country: 'United States',
+          zip: '10001',
+        },
+      },
+    });
   });
 });
 
@@ -903,6 +932,50 @@ describe('AppService order pagination', () => {
       first: 10,
       searchQuery: 'customer_id:123 -tag:Placed -tag:ShipRequested',
     });
+  });
+
+  it('returns the complete persisted shipping address for saved drafts', async () => {
+    mockedAxios.mockResolvedValueOnce(
+      shopifyPage([
+        orderEdge(
+          'saved-1',
+          'cursor-saved-1',
+          [],
+          '0.00',
+          {
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            company: 'Analytical Engine',
+            address1: '123 Main Street',
+            address2: 'Suite 314',
+            city: 'New York',
+            province: 'NY',
+            country: 'United States',
+            zip: '10001',
+          },
+        ),
+      ]),
+    );
+
+    const result = await service.getSavedDraftOrdersPageByCustomerId(
+      'gid://shopify/Customer/123',
+      10,
+    );
+
+    expect(result.orders[0].shippingAddress).toEqual({
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      company: 'Analytical Engine',
+      address1: '123 Main Street',
+      address2: 'Suite 314',
+      city: 'New York',
+      province: 'NY',
+      country: 'United States',
+      zip: '10001',
+    });
+    expect(axiosRequest(0).data.query).toMatch(
+      /shippingAddress\s*\{[\s\S]*address2[\s\S]*firstName[\s\S]*lastName/,
+    );
   });
 
   it('keeps Requested Shipping server-side filtered, paginated, and includes shipping data', async () => {
