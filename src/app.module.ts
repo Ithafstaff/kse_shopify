@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { AppResolver } from './app.resolver';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { AccountRequestModule } from './account-request/account-request.module';
 
 @Module({
     imports: [
@@ -21,6 +22,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
             autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
             playground: false
         }),
+        AccountRequestModule,
     ],
     providers: [AppService, AppResolver],
 })
