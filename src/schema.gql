@@ -171,6 +171,12 @@ type CustomerCompany {
   priceLevel: String
 }
 
+type AccountRequestResult {
+  success: Boolean!
+  message: String!
+  requestId: String
+}
+
 type Query {
   products: [Product!]!
   getCustomers: [User!]!
@@ -213,6 +219,7 @@ type Mutation {
   createDraftOrderTag(draftOrderId: String!, tag: String!, userId: String!): Boolean!
   updateDraftOrderTag(draftOrderId: String!, tag: String!): DraftOrderTag!
   sendDraftOrderInvoice(draftOrderId: String!): Boolean!
+  requestAccount(input: AccountRequestInput!): AccountRequestResult!
 }
 
 input ShippingAddressInput {
@@ -264,4 +271,13 @@ input MetafieldInput {
   key: String!
   value: String
   type: String
+}
+
+input AccountRequestInput {
+  applicantType: String!
+  businessName: String!
+  contactName: String!
+  phone: String!
+  email: String!
+  comments: String
 }
