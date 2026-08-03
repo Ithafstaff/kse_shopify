@@ -19,6 +19,7 @@ describe('AppResolver requestShippingFee', () => {
     getDraftOrders: jest.Mock;
     getRequestedShippingDraftOrdersPageByCustomerId: jest.Mock;
     getCustomerOrderDetails: jest.Mock;
+    getCombinedDraftOrdersPage: jest.Mock;
   };
   let resolver: AppResolver;
 
@@ -29,6 +30,7 @@ describe('AppResolver requestShippingFee', () => {
       getDraftOrders: jest.fn(),
       getRequestedShippingDraftOrdersPageByCustomerId: jest.fn(),
       getCustomerOrderDetails: jest.fn(),
+      getCombinedDraftOrdersPage: jest.fn(),
     };
     resolver = new AppResolver(appService as unknown as AppService);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -185,6 +187,34 @@ describe('AppResolver requestShippingFee', () => {
       '1001',
       'gid://shopify/Customer/123',
       'Acme',
+    );
+  });
+
+  it('delegates combined draft-order pages with order scope', async () => {
+    const resultPage = {
+      orders: [],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    };
+    appService.getCombinedDraftOrdersPage.mockResolvedValue(resultPage);
+
+    await expect(
+      resolver.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        'cursor-1',
+        'po-100',
+        'Company',
+      ),
+    ).resolves.toBe(resultPage);
+
+    expect(appService.getCombinedDraftOrdersPage).toHaveBeenCalledWith(
+      'gid://shopify/Customer/1',
+      'Acme',
+      10,
+      'cursor-1',
+      'po-100',
+      'Company',
     );
   });
 });
