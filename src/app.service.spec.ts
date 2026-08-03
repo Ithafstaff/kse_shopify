@@ -573,6 +573,138 @@ describe('AppService order pagination', () => {
       expect(axiosRequest(0).data.query).toContain('sortKey: NUMBER');
     });
 
+    it('returns only personal orders when orderScope is Personal', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', ['Placed', 'company: Other']),
+          orderEdge('2', 'cursor-2', ['Placed', 'company: Acme'], '0.00', null, {
+            customer: { id: 'gid://shopify/Customer/2' },
+          }),
+          orderEdge('3', 'cursor-3', ['Placed', 'company: Other']),
+        ]),
+      );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        undefined,
+        'Personal',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D1', '#D3']);
+      expect(result.orders.every((order) => order.orderType === 'Personal')).toBe(true);
+    });
+
+    it('returns only company orders when orderScope is Company', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', ['Placed', 'company: Other']),
+          orderEdge('2', 'cursor-2', ['Placed', 'company: Acme'], '0.00', null, {
+            customer: { id: 'gid://shopify/Customer/2' },
+          }),
+          orderEdge('3', 'cursor-3', ['Placed', 'company: Acme'], '0.00', null, {
+            customer: { id: 'gid://shopify/Customer/3' },
+          }),
+        ]),
+      );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        undefined,
+        'Company',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D2', '#D3']);
+      expect(result.orders.every((order) => order.orderType === 'Company')).toBe(true);
+    });
+
+    it('keeps current combined behavior when orderScope is All or omitted', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(
+          shopifyPage([
+            orderEdge('1', 'cursor-1', ['Placed', 'company: Other']),
+            orderEdge('2', 'cursor-2', ['Placed', 'company: Acme'], '0.00', null, {
+              customer: { id: 'gid://shopify/Customer/2' },
+            }),
+          ]),
+        )
+        .mockResolvedValueOnce(
+          shopifyPage([
+            orderEdge('1', 'cursor-1', ['Placed', 'company: Other']),
+            orderEdge('2', 'cursor-2', ['Placed', 'company: Acme'], '0.00', null, {
+              customer: { id: 'gid://shopify/Customer/2' },
+            }),
+          ]),
+        );
+
+      const explicitAll = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        undefined,
+        'All',
+      );
+      const omittedScope = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+      );
+
+      expect(explicitAll.orders.map((order) => order.name)).toEqual(['#D1', '#D2']);
+      expect(omittedScope.orders.map((order) => order.name)).toEqual(['#D1', '#D2']);
+    });
+
+    it('rejects invalid orderScope before querying Shopify', async () => {
+      await expect(
+        service.getCombinedDraftOrdersPage(
+          'gid://shopify/Customer/1',
+          'Acme',
+          10,
+          undefined,
+          undefined,
+          'Team',
+        ),
+      ).rejects.toThrow('Invalid order scope.');
+
+      expect(mockedAxios).not.toHaveBeenCalled();
+    });
+
+    it('fills scoped pages by scanning past non-matching orders', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(
+          shopifyPage(
+            [
+              orderEdge('1', 'cursor-1', ['Placed', 'company: Acme'], '0.00', null, {
+                customer: { id: 'gid://shopify/Customer/2' },
+              }),
+            ],
+            true,
+          ),
+        )
+        .mockResolvedValueOnce(
+          shopifyPage([orderEdge('2', 'cursor-2', ['Placed', 'company: Other'])]),
+        );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        1,
+        undefined,
+        undefined,
+        'Personal',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D2']);
+      expect(mockedAxios).toHaveBeenCalledTimes(2);
+      expect(axiosRequest(1).data.variables.after).toBe('cursor-1');
+    });
+
     it('omits placed draft orders without linked Shopify orders and scans later pages', async () => {
       mockedAxios
         .mockResolvedValueOnce(

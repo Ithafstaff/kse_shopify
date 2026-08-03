@@ -68,6 +68,20 @@ export class AppService {
     return company.toLowerCase().replace(/[^a-z0-9]/g, '');
   }
 
+  private normalizeOrderScope(orderScope?: string): 'Personal' | 'Company' | 'All' {
+    const normalizedScope = (orderScope || 'All').trim();
+
+    if (
+      normalizedScope === 'Personal' ||
+      normalizedScope === 'Company' ||
+      normalizedScope === 'All'
+    ) {
+      return normalizedScope;
+    }
+
+    throw new Error('Invalid order scope.');
+  }
+
   private orderMatchesCompany(tags: string[] = [], company: string): boolean {
     const requestedCompany = this.normalizeCompanyName(company);
     if (!requestedCompany) return false;
@@ -3194,6 +3208,7 @@ export class AppService {
     first = 10,
     after?: string,
     search?: string,
+    orderScope?: string,
   ): Promise<CompanyDraftOrderPage> {
     const numericCustomerId = customerId.split('/').pop();
 
@@ -3201,6 +3216,7 @@ export class AppService {
       throw new Error('Invalid Shopify customer ID.');
     }
 
+    const scope = this.normalizeOrderScope(orderScope);
     const requestedCompany = company?.trim();
     const hasCompany = Boolean(
       requestedCompany && this.normalizeCompanyName(requestedCompany),
@@ -3336,10 +3352,15 @@ export class AppService {
           const isCompanyOrder =
             hasCompany &&
             this.orderMatchesCompany(order.tags || [], requestedCompany);
+          const matchesOrderScope =
+            scope === 'All' ||
+            (scope === 'Personal' && isPersonalOrder) ||
+            (scope === 'Company' && isCompanyOrder && !isPersonalOrder);
 
           if (
             order.order?.id &&
             (isPersonalOrder || isCompanyOrder) &&
+            matchesOrderScope &&
             this.orderMatchesSearch(order, search)
           ) {
             orders.push({
