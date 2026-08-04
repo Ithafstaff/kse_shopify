@@ -126,6 +126,7 @@ type DraftOrder {
   completedAt: String
   status: String
   orderType: String
+  totalPrice: Float
   taxesIncluded: Boolean
   lineItems: [LineItem!]
   shippingAddress: ShippingAddress

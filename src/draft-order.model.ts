@@ -188,6 +188,9 @@ export class DraftOrder {
   orderType?: string;
 
   @Field({ nullable: true })
+  totalPrice?: number;
+
+  @Field({ nullable: true })
   taxesIncluded?: boolean;
 
   @Field(() => [LineItem], { nullable: true })
