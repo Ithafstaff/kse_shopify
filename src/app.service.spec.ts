@@ -941,6 +941,120 @@ describe('AppService order pagination', () => {
       expect(axiosRequest(0).data.query).not.toContain('metafields(');
     });
 
+    it('searches combined Order History by lightweight product and SKU fields only when searching', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', ['Placed', 'company: Acme'], '0.00', null, {
+            lineItems: {
+              edges: [
+                {
+                  node: {
+                    title: 'Bath Towel',
+                    name: 'Bath Towel',
+                    sku: 'TOWEL-001',
+                    variant: { title: 'White' },
+                  },
+                },
+              ],
+            },
+          }),
+        ]),
+      );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        'TOWEL-001',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D1']);
+      expect(axiosRequest(0).data.query).toMatch(/lineItems\(first: 10\)/);
+      expect(axiosRequest(0).data.query).toMatch(/node \{[\s\S]*sku/);
+      expect(axiosRequest(0).data.query).not.toContain('metafields(');
+      expect(result.orders[0].lineItems).toEqual([]);
+    });
+
+    it('searches Personal order history by lightweight product fields', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', ['Placed', 'company: Acme'], '0.00', null, {
+            lineItems: {
+              edges: [
+                {
+                  node: {
+                    title: 'Bath Towel',
+                    name: 'Bath Towel',
+                    sku: 'TOWEL-001',
+                    variant: { title: 'White' },
+                  },
+                },
+              ],
+            },
+          }),
+        ]),
+      );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        'Bath Towel',
+        'Personal',
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D1']);
+      expect(axiosRequest(0).data.variables.searchQuery).toBe('customer_id:1 tag:Placed');
+      expect(axiosRequest(0).data.query).toMatch(/lineItems\(first: 10\)/);
+      expect(axiosRequest(0).data.query).not.toContain('metafields(');
+    });
+
+    it('reuses cached item search text for repeated order searches', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(
+          shopifyPage([
+            orderEdge('1', 'cursor-1', ['Placed', 'company: Acme'], '0.00', null, {
+              lineItems: {
+                edges: [
+                  {
+                    node: {
+                      title: 'Bath Towel',
+                      name: 'Bath Towel',
+                      sku: 'TOWEL-001',
+                      variant: { title: 'White' },
+                    },
+                  },
+                ],
+              },
+            }),
+          ]),
+        )
+        .mockResolvedValueOnce(
+          shopifyPage([
+            orderEdge('1', 'cursor-1', ['Placed', 'company: Acme']),
+          ]),
+        );
+
+      await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        'TOWEL-001',
+      );
+      const secondResult = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+        undefined,
+        'TOWEL-001',
+      );
+
+      expect(secondResult.orders.map((order) => order.name)).toEqual(['#D1']);
+    });
+
     it('scans later Shopify pages for a general search match', async () => {
       mockedAxios
         .mockResolvedValueOnce(

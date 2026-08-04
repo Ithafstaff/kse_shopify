@@ -24,6 +24,11 @@ export class AppService {
   private readonly shopifyAccessToken: string;
   private readonly tags: DraftOrderTag[] = [];
   private readonly shopId: string = 'gid://shopify/Shop/78220263608';
+  private readonly orderItemSearchCacheTtlMs = 5 * 60 * 1000;
+  private readonly orderItemSearchTextCache = new Map<
+    string,
+    { expiresAt: number; text: string }
+  >();
 
   constructor(private readonly configService: ConfigService) {
     this.shopifyApiUrl = this.configService.get<string>('SHOPIFY_API_URL');
@@ -118,6 +123,29 @@ export class AppService {
     return String(value ?? '').trim().toLowerCase();
   }
 
+  private hasOrderSearch(search?: string): boolean {
+    return this.normalizeOrderSearchValue(search).length > 0;
+  }
+
+  private orderItemSearchSelection(search?: string): string {
+    if (!this.hasOrderSearch(search)) return '';
+
+    return `
+              lineItems(first: 10) {
+                edges {
+                  node {
+                    title
+                    name
+                    sku
+                    variant {
+                      title
+                    }
+                  }
+                }
+              }
+    `;
+  }
+
   private orderTagValue(tags: string[] = [], prefix: string): string {
     const tag = tags.find((value) => value.startsWith(prefix));
     return tag ? tag.slice(prefix.length).trim() : '';
@@ -158,12 +186,43 @@ export class AppService {
       this.orderTagValue(tags, 'Country:'),
       this.orderTagValue(tags, 'Zip:'),
       this.orderTagValue(tags, 'NOTES:'),
+      this.orderItemSearchText(order),
     ];
 
     return searchableValues.some(
       (value) =>
         this.normalizeOrderSearchValue(value).includes(requestedSearch),
     );
+  }
+
+  private orderItemSearchText(order: any): string {
+    const orderId = typeof order?.id === 'string' ? order.id : null;
+    const cached = orderId ? this.orderItemSearchTextCache.get(orderId) : null;
+    const now = Date.now();
+
+    if (cached && cached.expiresAt > now) {
+      return cached.text;
+    }
+
+    const text = (order?.lineItems?.edges || [])
+      .flatMap((edge) => [
+        edge.node?.title,
+        edge.node?.name,
+        edge.node?.sku,
+        edge.node?.variant?.title,
+      ])
+      .map((value) => this.normalizeOrderSearchValue(value))
+      .filter(Boolean)
+      .join(' ');
+
+    if (orderId && text) {
+      this.orderItemSearchTextCache.set(orderId, {
+        expiresAt: now + this.orderItemSearchCacheTtlMs,
+        text,
+      });
+    }
+
+    return text;
   }
 
   escapeGraphQLString(str: string): string {
@@ -3233,6 +3292,7 @@ export class AppService {
     let scanning = true;
     const orders: DraftOrder[] = [];
     const seenCursors = new Set<string>();
+    const itemSearchSelection = this.orderItemSearchSelection(search);
 
     const query = `
       query GetCombinedDraftOrdersPage(
@@ -3282,6 +3342,7 @@ export class AppService {
                   currencyCode
                 }
               }
+              ${itemSearchSelection}
             }
           }
         }
@@ -3427,6 +3488,7 @@ export class AppService {
     search?: string,
   ): Promise<CompanyDraftOrderPage> {
     const pageSize = Math.min(Math.max(first, 1), 10);
+    const itemSearchSelection = this.orderItemSearchSelection(search);
     const query = `
       query GetPersonalCombinedDraftOrdersPage(
         $first: Int!
@@ -3474,6 +3536,7 @@ export class AppService {
                   currencyCode
                 }
               }
+              ${itemSearchSelection}
             }
           }
         }
