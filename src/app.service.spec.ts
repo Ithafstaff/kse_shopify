@@ -44,6 +44,12 @@ function orderEdge(
       order: { id: `gid://shopify/Order/${id}` },
       shippingAddress,
       shippingLine: { title: 'Shipping', price: shippingPrice },
+      totalPriceSet: {
+        shopMoney: {
+          amount: '25.00',
+          currencyCode: 'USD',
+        },
+      },
       lineItems: { edges: [] },
       ...overrides,
     },
@@ -595,6 +601,15 @@ describe('AppService order pagination', () => {
 
       expect(result.orders.map((order) => order.name)).toEqual(['#D1', '#D3']);
       expect(result.orders.every((order) => order.orderType === 'Personal')).toBe(true);
+      expect(axiosRequest(0).data).toMatchObject({
+        variables: {
+          first: 10,
+          searchQuery: 'customer_id:1 tag:Placed',
+        },
+      });
+      expect(axiosRequest(0).data.query).toContain('totalPriceSet');
+      expect(axiosRequest(0).data.query).not.toContain('lineItems(');
+      expect(axiosRequest(0).data.query).not.toContain('metafields(');
     });
 
     it('returns only company orders when orderScope is Company', async () => {
@@ -675,12 +690,68 @@ describe('AppService order pagination', () => {
       expect(mockedAxios).not.toHaveBeenCalled();
     });
 
+    it('returns summary totals for combined order list rows without requesting detail fields', async () => {
+      mockedAxios.mockResolvedValueOnce(
+        shopifyPage([
+          orderEdge('1', 'cursor-1', ['Placed', 'company: Other'], '5.00', null, {
+            totalPriceSet: {
+              shopMoney: {
+                amount: '30.50',
+                currencyCode: 'USD',
+              },
+            },
+          }),
+        ]),
+      );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        10,
+      );
+
+      expect(result.orders[0]).toMatchObject({
+        name: '#D1',
+        totalPrice: 30.5,
+      });
+      expect(result.orders[0].lineItems).toEqual([]);
+      expect(axiosRequest(0).data.query).toContain('totalPriceSet');
+      expect(axiosRequest(0).data.query).not.toContain('lineItems(');
+      expect(axiosRequest(0).data.query).not.toContain('metafields(');
+    });
+
+    it('keeps Personal pagination on Shopify customer cursors', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(shopifyPage([orderEdge('1', 'cursor-1', ['Placed'])], true))
+        .mockResolvedValueOnce(shopifyPage([orderEdge('2', 'cursor-2', ['Placed'])]));
+
+      const firstPage = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        1,
+        undefined,
+        undefined,
+        'Personal',
+      );
+      await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        1,
+        firstPage.pageInfo.endCursor,
+        undefined,
+        'Personal',
+      );
+
+      expect(firstPage.pageInfo.endCursor).toBe('cursor-1');
+      expect(axiosRequest(1).data.variables.after).toBe('cursor-1');
+    });
+
     it('fills scoped pages by scanning past non-matching orders', async () => {
       mockedAxios
         .mockResolvedValueOnce(
           shopifyPage(
             [
-              orderEdge('1', 'cursor-1', ['Placed', 'company: Acme'], '0.00', null, {
+              orderEdge('1', 'cursor-1', ['Placed', 'company: Other'], '0.00', null, {
                 customer: { id: 'gid://shopify/Customer/2' },
               }),
             ],
@@ -688,7 +759,11 @@ describe('AppService order pagination', () => {
           ),
         )
         .mockResolvedValueOnce(
-          shopifyPage([orderEdge('2', 'cursor-2', ['Placed', 'company: Other'])]),
+          shopifyPage([
+            orderEdge('2', 'cursor-2', ['Placed', 'company: Acme'], '0.00', null, {
+              customer: { id: 'gid://shopify/Customer/2' },
+            }),
+          ]),
         );
 
       const result = await service.getCombinedDraftOrdersPage(
@@ -697,7 +772,7 @@ describe('AppService order pagination', () => {
         1,
         undefined,
         undefined,
-        'Personal',
+        'Company',
       );
 
       expect(result.orders.map((order) => order.name)).toEqual(['#D2']);
@@ -828,9 +903,6 @@ describe('AppService order pagination', () => {
       ['province', 'NY'],
       ['country', 'United States'],
       ['ZIP', '10001'],
-      ['product title', 'Bath Towel'],
-      ['variant title', 'White'],
-      ['SKU', 'TOWEL-001'],
       ['note', 'Leave at front desk'],
       ['NOTES tag', 'front desk'],
     ])('searches combined Order History by %s', async (_field, search) => {
@@ -849,7 +921,7 @@ describe('AppService order pagination', () => {
       expect(result.orders.map((order) => order.name)).toEqual(['#D99']);
     });
 
-    it('requests the customer, note, and SKU fields used by general search', async () => {
+    it('requests only the summary fields used by general search and list rows', async () => {
       mockedAxios.mockResolvedValueOnce(
         shopifyPage([searchableOrderEdge()]),
       );
@@ -865,7 +937,8 @@ describe('AppService order pagination', () => {
       );
       expect(axiosRequest(0).data.query).toMatch(/order\s*\{\s*id\s*\}/);
       expect(axiosRequest(0).data.query).toContain('note2');
-      expect(axiosRequest(0).data.query).toMatch(/node \{[\s\S]*sku/);
+      expect(axiosRequest(0).data.query).not.toContain('lineItems(');
+      expect(axiosRequest(0).data.query).not.toContain('metafields(');
     });
 
     it('scans later Shopify pages for a general search match', async () => {
@@ -881,16 +954,8 @@ describe('AppService order pagination', () => {
             orderEdge(
               '2',
               'cursor-2',
-              ['Placed', 'company: Acme'],
+              ['Placed', 'company: Acme', 'PO: MATCH-002'],
               '0.00',
-              null,
-              {
-                lineItems: {
-                  edges: [
-                    { node: { title: 'Widget', sku: 'SKU-002', quantity: 1 } },
-                  ],
-                },
-              },
             ),
           ]),
         );
@@ -900,7 +965,7 @@ describe('AppService order pagination', () => {
         'Acme',
         10,
         undefined,
-        'SKU-002',
+        'MATCH-002',
       );
 
       expect(result.orders.map((order) => order.name)).toEqual(['#D2']);

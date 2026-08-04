@@ -158,12 +158,6 @@ export class AppService {
       this.orderTagValue(tags, 'Country:'),
       this.orderTagValue(tags, 'Zip:'),
       this.orderTagValue(tags, 'NOTES:'),
-      ...(order.lineItems?.edges || []).flatMap((edge) => [
-        edge.node?.title,
-        edge.node?.name,
-        edge.node?.sku,
-        edge.node?.variant?.title,
-      ]),
     ];
 
     return searchableValues.some(
@@ -3217,6 +3211,16 @@ export class AppService {
     }
 
     const scope = this.normalizeOrderScope(orderScope);
+
+    if (scope === 'Personal') {
+      return this.getPersonalCombinedDraftOrdersPage(
+        numericCustomerId,
+        first,
+        after,
+        search,
+      );
+    }
+
     const requestedCompany = company?.trim();
     const hasCompany = Boolean(
       requestedCompany && this.normalizeCompanyName(requestedCompany),
@@ -3272,28 +3276,10 @@ export class AppService {
                 title
                 price
               }
-              lineItems(first: 10) {
-                edges {
-                  node {
-                    title
-                    name
-                    sku
-                    quantity
-                    appliedDiscount {
-                      value
-                      valueType
-                    }
-                    variant {
-                      title
-                      price
-                      metafields(first: 5) {
-                        nodes {
-                          key
-                          value
-                        }
-                      }
-                    }
-                  }
+              totalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
                 }
               }
             }
@@ -3354,7 +3340,6 @@ export class AppService {
             this.orderMatchesCompany(order.tags || [], requestedCompany);
           const matchesOrderScope =
             scope === 'All' ||
-            (scope === 'Personal' && isPersonalOrder) ||
             (scope === 'Company' && isCompanyOrder && !isPersonalOrder);
 
           if (
@@ -3385,22 +3370,8 @@ export class AppService {
                   price: Number(order.shippingLine.price) || 0,
                 }
                 : null,
-              lineItems:
-                order.lineItems?.edges.map((lineItemEdge) => ({
-                  title: lineItemEdge.node.title,
-                  name: lineItemEdge.node.name || null,
-                  sku: lineItemEdge.node.sku || null,
-                  quantity: lineItemEdge.node.quantity,
-                  appliedDiscount: lineItemEdge.node.appliedDiscount || null,
-                  variant: lineItemEdge.node.variant
-                    ? {
-                      title: lineItemEdge.node.variant.title,
-                      price: lineItemEdge.node.variant.price,
-                      metafields:
-                        lineItemEdge.node.variant.metafields?.nodes || [],
-                    }
-                    : null,
-                })) || [],
+              totalPrice: Number(order.totalPriceSet?.shopMoney?.amount) || 0,
+              lineItems: [],
             });
           }
 
@@ -3443,6 +3414,150 @@ export class AppService {
     } catch (error) {
       console.error(
         'Error fetching combined draft-order page:',
+        error.response?.data || error.message,
+      );
+      throw new Error('Failed to fetch combined draft-order page.');
+    }
+  }
+
+  private async getPersonalCombinedDraftOrdersPage(
+    numericCustomerId: string,
+    first = 10,
+    after?: string,
+    search?: string,
+  ): Promise<CompanyDraftOrderPage> {
+    const pageSize = Math.min(Math.max(first, 1), 10);
+    const query = `
+      query GetPersonalCombinedDraftOrdersPage(
+        $first: Int!
+        $after: String
+        $searchQuery: String!
+      ) {
+        draftOrders(
+          first: $first
+          after: $after
+          query: $searchQuery
+          sortKey: NUMBER
+          reverse: true
+        ) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          edges {
+            node {
+              id
+              name
+              createdAt
+              customer { id firstName lastName email }
+              order {
+                id
+              }
+              note2
+              tags
+              shippingAddress {
+                address1
+                address2
+                city
+                province
+                country
+                zip
+                company
+              }
+              shippingLine {
+                title
+                price
+              }
+              totalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    try {
+      const response = await axios({
+        url: this.shopifyApiUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': this.shopifyAccessToken,
+        },
+        data: {
+          query,
+          variables: {
+            first: pageSize,
+            after: after || null,
+            searchQuery: `customer_id:${numericCustomerId} tag:Placed`,
+          },
+        },
+      });
+
+      if (response.data.errors?.length) {
+        throw new Error(
+          response.data.errors
+            .map((error: { message: string }) => error.message)
+            .join('; '),
+        );
+      }
+
+      const connection = response.data.data?.draftOrders;
+
+      if (!connection?.edges || !connection?.pageInfo) {
+        throw new Error(
+          'Personal draft-order page not found in the API response.',
+        );
+      }
+
+      const orders = connection.edges
+        .map((edge) => edge.node)
+        .filter(
+          (order) =>
+            order.order?.id &&
+            order.customer?.id === `gid://shopify/Customer/${numericCustomerId}` &&
+            this.orderMatchesSearch(order, search),
+        )
+        .map((order) => ({
+          id: order.id,
+          name: order.name,
+          createdAt: order.createdAt,
+          note: order.note2 || null,
+          customer: order.customer
+            ? {
+              id: order.customer.id,
+              firstName: order.customer.firstName || null,
+              lastName: order.customer.lastName || null,
+              email: order.customer.email || null,
+            }
+            : null,
+          orderType: 'Personal',
+          tags: order.tags || [],
+          shippingAddress: order.shippingAddress || null,
+          shippingLine: order.shippingLine
+            ? {
+              title: order.shippingLine.title,
+              price: Number(order.shippingLine.price) || 0,
+            }
+            : null,
+          totalPrice: Number(order.totalPriceSet?.shopMoney?.amount) || 0,
+          lineItems: [],
+        }));
+
+      return {
+        orders,
+        pageInfo: {
+          hasNextPage: connection.pageInfo.hasNextPage,
+          endCursor: connection.pageInfo.endCursor || null,
+        },
+      };
+    } catch (error) {
+      console.error(
+        'Error fetching personal combined draft-order page:',
         error.response?.data || error.message,
       );
       throw new Error('Failed to fetch combined draft-order page.');
