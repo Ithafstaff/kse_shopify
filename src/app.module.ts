@@ -7,6 +7,7 @@ import { AppResolver } from './app.resolver';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { AccountRequestModule } from './account-request/account-request.module';
+import { AppProxyAccountController } from './app-proxy-account.controller';
 
 @Module({
     imports: [
@@ -24,6 +25,7 @@ import { AccountRequestModule } from './account-request/account-request.module';
         }),
         AccountRequestModule,
     ],
+    controllers: [AppProxyAccountController],
     providers: [AppService, AppResolver],
 })
 export class AppModule { }
