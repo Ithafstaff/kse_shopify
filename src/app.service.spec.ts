@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
 import { AppService } from './app.service';
+import { createHmac } from 'crypto';
 
 jest.mock('axios');
 
@@ -31,10 +32,26 @@ function configService(): ConfigService {
         SHOPIFY_STOREFRONT_API_URL:
           'https://shop.example/api/2026-01/graphql.json',
         SHOPIFY_STOREFRONT_ACCESS_TOKEN: 'storefront-token',
+        SHOPIFY_API_SECRET: 'app-proxy-secret',
       };
       return values[key];
     }),
   } as unknown as ConfigService;
+}
+
+function signedAppProxyQuery(
+  params: Record<string, string>,
+  secret = 'app-proxy-secret',
+) {
+  const message = Object.entries(params)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join('');
+
+  return {
+    ...params,
+    signature: createHmac('sha256', secret).update(message).digest('hex'),
+  };
 }
 
 function orderEdge(
@@ -1845,6 +1862,149 @@ describe('AppService customer account updates', () => {
         'new-password',
       ),
     ).rejects.toThrow('Unable to save account details.');
+  });
+
+  it('updates profile and company through a signed app proxy request without requiring a password', async () => {
+    const profileResult = {
+      id: 'gid://shopify/Customer/123',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+    };
+    const companyResult = {
+      id: 'gid://shopify/Customer/123',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      company: 'Analytical Engine',
+      priceLevel: 'Price_A',
+    };
+    const updateCustomerProfileSpy = jest
+      .spyOn(service, 'updateCustomerProfile')
+      .mockResolvedValue(profileResult);
+    const updateCustomerCompanySpy = jest
+      .spyOn(service, 'updateCustomerCompany')
+      .mockResolvedValue(companyResult);
+
+    await expect(
+      service.updateCustomerAccountFromAppProxy(
+        {
+          customerId: 'gid://shopify/Customer/123',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          company: 'Analytical Engine',
+        },
+        signedAppProxyQuery({
+          logged_in_customer_id: '123',
+          path_prefix: '/apps/kse-account',
+          shop: 'kse-suppliers.myshopify.com',
+          timestamp: '1786120000',
+        }),
+      ),
+    ).resolves.toEqual(companyResult);
+
+    expect(updateCustomerProfileSpy).toHaveBeenCalledWith(
+      'gid://shopify/Customer/123',
+      'Ada',
+      'Lovelace',
+    );
+    expect(updateCustomerCompanySpy).toHaveBeenCalledWith(
+      'gid://shopify/Customer/123',
+      'Analytical Engine',
+    );
+    expect(mockedAxios).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsigned app proxy profile updates before writing customer data', async () => {
+    const updateCustomerProfileSpy = jest.spyOn(service, 'updateCustomerProfile');
+    const updateCustomerCompanySpy = jest.spyOn(service, 'updateCustomerCompany');
+
+    await expect(
+      service.updateCustomerAccountFromAppProxy(
+        {
+          customerId: 'gid://shopify/Customer/123',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          company: 'Analytical Engine',
+        },
+        {
+          logged_in_customer_id: '123',
+          path_prefix: '/apps/kse-account',
+          shop: 'kse-suppliers.myshopify.com',
+          timestamp: '1786120000',
+          signature: 'bad-signature',
+        },
+      ),
+    ).rejects.toThrow('Customer account identity could not be verified.');
+
+    expect(updateCustomerProfileSpy).not.toHaveBeenCalled();
+    expect(updateCustomerCompanySpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects signed app proxy updates for a different customer ID', async () => {
+    const updateCustomerProfileSpy = jest.spyOn(service, 'updateCustomerProfile');
+    const updateCustomerCompanySpy = jest.spyOn(service, 'updateCustomerCompany');
+
+    await expect(
+      service.updateCustomerAccountFromAppProxy(
+        {
+          customerId: 'gid://shopify/Customer/123',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          company: 'Analytical Engine',
+        },
+        signedAppProxyQuery({
+          logged_in_customer_id: '999',
+          path_prefix: '/apps/kse-account',
+          shop: 'kse-suppliers.myshopify.com',
+          timestamp: '1786120000',
+        }),
+      ),
+    ).rejects.toThrow('Customer account identity could not be verified.');
+
+    expect(updateCustomerProfileSpy).not.toHaveBeenCalled();
+    expect(updateCustomerCompanySpy).not.toHaveBeenCalled();
+  });
+
+  it('uses Storefront password verification for app proxy password changes', async () => {
+    const companyResult = {
+      id: 'gid://shopify/Customer/123',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      company: 'Analytical Engine',
+      priceLevel: 'Price_A',
+    };
+    const passwordUpdateSpy = jest
+      .spyOn(service, 'updateCustomerAccount')
+      .mockResolvedValue(companyResult);
+
+    await expect(
+      service.updateCustomerAccountFromAppProxy(
+        {
+          customerId: 'gid://shopify/Customer/123',
+          email: 'ada@example.com',
+          currentPassword: 'current-password',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          company: 'Analytical Engine',
+          newPassword: 'new-password',
+        },
+        signedAppProxyQuery({
+          logged_in_customer_id: '123',
+          path_prefix: '/apps/kse-account',
+          shop: 'kse-suppliers.myshopify.com',
+          timestamp: '1786120000',
+        }),
+      ),
+    ).resolves.toEqual(companyResult);
+
+    expect(passwordUpdateSpy).toHaveBeenCalledWith(
+      'gid://shopify/Customer/123',
+      'ada@example.com',
+      'current-password',
+      'Ada',
+      'Lovelace',
+      'Analytical Engine',
+      'new-password',
+    );
   });
 });
 

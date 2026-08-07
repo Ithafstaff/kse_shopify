@@ -16,6 +16,19 @@ import { AddressInput } from './dto/address.input';
 import { title } from 'process';
 import { CustomerCompany } from './dto/customer-company.dto';
 import { skip } from 'rxjs';
+import { createHmac, timingSafeEqual } from 'crypto';
+
+type AppProxyQuery = Record<string, string | string[] | undefined>;
+
+type CustomerAccountUpdateInput = {
+  customerId: string;
+  email?: string;
+  currentPassword?: string;
+  firstName: string;
+  lastName: string;
+  company: string;
+  newPassword?: string;
+};
 
 @Injectable()
 export class AppService {
@@ -24,6 +37,7 @@ export class AppService {
   private readonly shopifyAccessToken: string;
   private readonly shopifyStorefrontApiUrl: string;
   private readonly shopifyStorefrontAccessToken: string;
+  private readonly shopifyApiSecret: string;
   private readonly tags: DraftOrderTag[] = [];
   private readonly shopId: string = 'gid://shopify/Shop/78220263608';
   private readonly orderItemSearchCacheTtlMs = 5 * 60 * 1000;
@@ -45,6 +59,9 @@ export class AppService {
     );
     this.shopifyStorefrontAccessToken = this.configService.get<string>(
       'SHOPIFY_STOREFRONT_ACCESS_TOKEN',
+    );
+    this.shopifyApiSecret = this.configService.get<string>(
+      'SHOPIFY_API_SECRET',
     );
   }
 
@@ -324,6 +341,74 @@ export class AppService {
     if (Array.isArray(userErrors) && userErrors.length > 0) {
       throw new Error(safeErrorMessage);
     }
+  }
+
+  private assertCustomerAccountAppProxyConfigured(): void {
+    if (!this.shopifyApiSecret?.trim()) {
+      throw new Error('Account update service is not configured.');
+    }
+  }
+
+  private verifyAppProxyQuery(query: AppProxyQuery): boolean {
+    this.assertCustomerAccountAppProxyConfigured();
+
+    const signatureValue = query?.signature;
+    const signature = Array.isArray(signatureValue)
+      ? signatureValue[0]
+      : signatureValue;
+
+    if (!signature?.trim()) {
+      return false;
+    }
+
+    const message = Object.entries(query)
+      .filter(([key]) => key !== 'signature')
+      .map(([key, value]) => {
+        const normalizedValue = Array.isArray(value)
+          ? value.join(',')
+          : String(value ?? '');
+        return `${key}=${normalizedValue}`;
+      })
+      .sort()
+      .join('');
+    const calculatedSignature = createHmac('sha256', this.shopifyApiSecret)
+      .update(message)
+      .digest('hex');
+
+    try {
+      const signatureBuffer = Buffer.from(signature, 'hex');
+      const calculatedBuffer = Buffer.from(calculatedSignature, 'hex');
+      return (
+        signatureBuffer.length === calculatedBuffer.length &&
+        timingSafeEqual(signatureBuffer, calculatedBuffer)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private assertAppProxyCustomerMatches(
+    customerId: string,
+    query: AppProxyQuery,
+  ): string {
+    if (!this.verifyAppProxyQuery(query)) {
+      throw new Error('Customer account identity could not be verified.');
+    }
+
+    const loggedInCustomerIdValue = query?.logged_in_customer_id;
+    const loggedInCustomerId = Array.isArray(loggedInCustomerIdValue)
+      ? loggedInCustomerIdValue[0]
+      : loggedInCustomerIdValue;
+
+    const canonicalCustomerId = this.canonicalizeCustomerId(customerId);
+    const canonicalLoggedInCustomerId =
+      this.canonicalizeCustomerId(loggedInCustomerId);
+
+    if (canonicalCustomerId !== canonicalLoggedInCustomerId) {
+      throw new Error('Customer account identity could not be verified.');
+    }
+
+    return canonicalCustomerId;
   }
 
   /** 
@@ -801,6 +886,116 @@ export class AppService {
         canonicalCustomerId,
         trimmedCompany,
       );
+    } catch (error) {
+      this.rethrowAccountUpdateError(error, 'Unable to save account details.');
+    }
+  }
+
+  async updateCustomerAccountFromAppProxy(
+    input: CustomerAccountUpdateInput,
+    query: AppProxyQuery,
+  ): Promise<CustomerCompany> {
+    const canonicalCustomerId = this.assertAppProxyCustomerMatches(
+      input.customerId,
+      query,
+    );
+    const trimmedFirstName = input.firstName?.trim();
+    const trimmedLastName = input.lastName?.trim();
+    const trimmedCompany = input.company?.trim() || '';
+    const hasPasswordChange = Boolean(input.newPassword?.trim());
+
+    if (!trimmedFirstName || !trimmedLastName) {
+      throw new Error('Unable to save account details.');
+    }
+
+    if (hasPasswordChange) {
+      return this.updateCustomerAccount(
+        canonicalCustomerId,
+        input.email,
+        input.currentPassword,
+        trimmedFirstName,
+        trimmedLastName,
+        trimmedCompany,
+        input.newPassword,
+      );
+    }
+
+    try {
+      await this.updateCustomerProfile(
+        canonicalCustomerId,
+        trimmedFirstName,
+        trimmedLastName,
+      );
+      return await this.updateCustomerCompany(
+        canonicalCustomerId,
+        trimmedCompany,
+      );
+    } catch (error) {
+      this.rethrowAccountUpdateError(error, 'Unable to save account details.');
+    }
+  }
+
+  async updateCustomerProfile(
+    customerId: string,
+    firstName: string,
+    lastName: string,
+  ): Promise<Pick<CustomerCompany, 'id' | 'firstName' | 'lastName'>> {
+    const canonicalCustomerId = this.canonicalizeCustomerId(customerId);
+    const trimmedFirstName = firstName?.trim();
+    const trimmedLastName = lastName?.trim();
+
+    if (!trimmedFirstName || !trimmedLastName) {
+      throw new Error('Unable to save account details.');
+    }
+
+    try {
+      const mutation = `
+        mutation UpdateCustomerProfile($input: CustomerInput!) {
+          customerUpdate(input: $input) {
+            customer {
+              id
+              firstName
+              lastName
+            }
+            userErrors {
+              message
+            }
+          }
+        }
+      `;
+      const response = await axios({
+        url: this.shopifyApiUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': this.shopifyAccessToken,
+        },
+        data: {
+          query: mutation,
+          variables: {
+            input: {
+              id: canonicalCustomerId,
+              firstName: trimmedFirstName,
+              lastName: trimmedLastName,
+            },
+          },
+        },
+      });
+      const payload = response.data?.data?.customerUpdate;
+
+      if (response.data?.errors?.length || payload?.userErrors?.length) {
+        throw new Error('Unable to save account details.');
+      }
+
+      if (!payload?.customer?.id) {
+        throw new Error('Unable to save account details.');
+      }
+
+      return {
+        id: payload.customer.id,
+        firstName: payload.customer.firstName,
+        lastName: payload.customer.lastName,
+      };
     } catch (error) {
       this.rethrowAccountUpdateError(error, 'Unable to save account details.');
     }
