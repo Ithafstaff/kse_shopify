@@ -439,6 +439,28 @@ export class AppResolver {
     return this.appService.updateCustomerCompany(id, company);
   }
 
+  @Mutation(() => CustomerCompany)
+  async updateCustomerAccount(
+    @Args('customerId', { type: () => String }) customerId: string,
+    @Args('email', { type: () => String }) email: string,
+    @Args('currentPassword', { type: () => String }) currentPassword: string,
+    @Args('firstName', { type: () => String }) firstName: string,
+    @Args('lastName', { type: () => String }) lastName: string,
+    @Args('company', { type: () => String }) company: string,
+    @Args('newPassword', { type: () => String, nullable: true })
+    newPassword?: string,
+  ): Promise<CustomerCompany> {
+    return this.appService.updateCustomerAccount(
+      customerId,
+      email,
+      currentPassword,
+      firstName,
+      lastName,
+      company,
+      newPassword,
+    );
+  }
+
   @Mutation(() => DraftOrder)
   async calculateDraftOrderById(@Args('draftOrderId') draftOrderId: string) {
     try {
