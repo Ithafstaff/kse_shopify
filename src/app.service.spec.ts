@@ -12,6 +12,15 @@ function axiosRequest(index: number) {
   };
 }
 
+function axiosConfig(index: number) {
+  return mockedAxios.mock.calls[index][0] as unknown as {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    data: { query: string; variables: Record<string, unknown> };
+  };
+}
+
 function configService(): ConfigService {
   return {
     get: jest.fn((key: string) => {
@@ -19,6 +28,9 @@ function configService(): ConfigService {
         SHOPIFY_API_URL: 'https://shop.example/admin/api/graphql.json',
         SHOPIFY_ACCESS_TOKEN: 'test-token',
         SHOPIFY_REST_API_URL_2: 'https://shop.example',
+        SHOPIFY_STOREFRONT_API_URL:
+          'https://shop.example/api/2026-01/graphql.json',
+        SHOPIFY_STOREFRONT_ACCESS_TOKEN: 'storefront-token',
       };
       return values[key];
     }),
@@ -1412,6 +1424,282 @@ describe('AppService customer pagination', () => {
     });
     expect(request.data.query).toContain(
       'customers(first: $first, after: $after, query: $query)',
+    );
+  });
+});
+
+describe('AppService customer account updates', () => {
+  let service: AppService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AppService(configService());
+  });
+
+  it('updates the authenticated customer profile and then synchronizes company data', async () => {
+    mockedAxios
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerAccessTokenCreate: {
+              customerAccessToken: {
+                accessToken: 'customer-access-token',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customer: {
+              id: 'gid://shopify/Customer/123',
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerUpdate: {
+              customer: {
+                id: 'gid://shopify/Customer/123',
+                firstName: 'Ada',
+                lastName: 'Lovelace',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      });
+
+    const companyResult = {
+      id: 'gid://shopify/Customer/123',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      company: 'Analytical Engine',
+      priceLevel: 'Price_A',
+    };
+    const updateCustomerCompanySpy = jest
+      .spyOn(service, 'updateCustomerCompany')
+      .mockResolvedValue(companyResult);
+
+    const result = await service.updateCustomerAccount(
+      'gid://shopify/Customer/123',
+      'ada@example.com',
+      'current-password',
+      'Ada',
+      'Lovelace',
+      'Analytical Engine',
+      'new-password',
+    );
+
+    expect(result).toEqual(companyResult);
+    expect(updateCustomerCompanySpy).toHaveBeenCalledWith(
+      'gid://shopify/Customer/123',
+      'Analytical Engine',
+    );
+
+    const [tokenRequest, customerRequest, updateRequest] = [
+      axiosConfig(0),
+      axiosConfig(1),
+      axiosConfig(2),
+    ];
+
+    for (const request of [tokenRequest, customerRequest, updateRequest]) {
+      expect(request.url).toBe('https://shop.example/api/2026-01/graphql.json');
+      expect(request.method).toBe('POST');
+      expect(request.headers).toMatchObject({
+        'Content-Type': 'application/json',
+        'X-Shopify-Storefront-Access-Token': 'storefront-token',
+      });
+    }
+
+    expect(tokenRequest.data.variables).toEqual({
+      input: {
+        email: 'ada@example.com',
+        password: 'current-password',
+      },
+    });
+    expect(customerRequest.data.variables).toEqual({
+      customerAccessToken: 'customer-access-token',
+    });
+    expect(updateRequest.data.variables).toEqual({
+      customerAccessToken: 'customer-access-token',
+      customer: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        password: 'new-password',
+      },
+    });
+    expect(updateRequest.data.variables.customer).not.toHaveProperty(
+      'passwordConfirmation',
+    );
+  });
+
+  it('rejects invalid Storefront authentication without syncing company data', async () => {
+    mockedAxios.mockResolvedValueOnce({
+      data: {
+        data: {
+          customerAccessTokenCreate: {
+            customerAccessToken: null,
+            customerUserErrors: [
+              { message: 'Unidentified customer' },
+            ],
+          },
+        },
+      },
+    });
+    const updateCustomerCompanySpy = jest.spyOn(service, 'updateCustomerCompany');
+
+    await expect(
+      service.updateCustomerAccount(
+        'gid://shopify/Customer/123',
+        'ada@example.com',
+        'current-password',
+        'Ada',
+        'Lovelace',
+        'Analytical Engine',
+        'new-password',
+      ),
+    ).rejects.toThrow('Invalid current password or account credentials.');
+
+    expect(updateCustomerCompanySpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a mismatched authenticated customer identity without syncing company data', async () => {
+    mockedAxios
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerAccessTokenCreate: {
+              customerAccessToken: {
+                accessToken: 'customer-access-token',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customer: {
+              id: 'gid://shopify/Customer/999',
+            },
+          },
+        },
+      });
+    const updateCustomerCompanySpy = jest.spyOn(service, 'updateCustomerCompany');
+
+    await expect(
+      service.updateCustomerAccount(
+        'gid://shopify/Customer/123',
+        'ada@example.com',
+        'current-password',
+        'Ada',
+        'Lovelace',
+        'Analytical Engine',
+        'new-password',
+      ),
+    ).rejects.toThrow('Customer account identity could not be verified.');
+
+    expect(updateCustomerCompanySpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['current password', '   ', 'Ada', 'Lovelace'],
+    ['first name', 'current-password', '   ', 'Lovelace'],
+    ['last name', 'current-password', 'Ada', '   '],
+  ])(
+    'rejects a blank %s before calling Storefront',
+    async (_field, currentPassword, firstName, lastName) => {
+      await expect(
+        service.updateCustomerAccount(
+          'gid://shopify/Customer/123',
+          'ada@example.com',
+          currentPassword,
+          firstName,
+          lastName,
+          'Analytical Engine',
+          'new-password',
+        ),
+      ).rejects.toThrow('Unable to save account details.');
+
+      expect(mockedAxios).not.toHaveBeenCalled();
+    },
+  );
+
+  it('omits password from the Storefront profile update when no new password is provided', async () => {
+    mockedAxios
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerAccessTokenCreate: {
+              customerAccessToken: {
+                accessToken: 'customer-access-token',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customer: {
+              id: 'gid://shopify/Customer/123',
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerUpdate: {
+              customer: {
+                id: 'gid://shopify/Customer/123',
+                firstName: 'Ada',
+                lastName: 'Lovelace',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      });
+    const updateCustomerCompanySpy = jest
+      .spyOn(service, 'updateCustomerCompany')
+      .mockResolvedValue({
+        id: 'gid://shopify/Customer/123',
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        company: 'Analytical Engine',
+        priceLevel: 'Price_A',
+      });
+
+    await service.updateCustomerAccount(
+      'gid://shopify/Customer/123',
+      'ada@example.com',
+      'current-password',
+      'Ada',
+      'Lovelace',
+      'Analytical Engine',
+    );
+
+    expect(updateCustomerCompanySpy).toHaveBeenCalledWith(
+      'gid://shopify/Customer/123',
+      'Analytical Engine',
+    );
+    expect(axiosConfig(2).data.variables).toEqual({
+      customerAccessToken: 'customer-access-token',
+      customer: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+      },
+    });
+    expect(axiosConfig(2).data.variables.customer).not.toHaveProperty(
+      'password',
     );
   });
 });

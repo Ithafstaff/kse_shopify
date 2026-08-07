@@ -22,6 +22,8 @@ export class AppService {
   private readonly shopifyApiUrl: string;
   private readonly shopifyRestUrl2: string;
   private readonly shopifyAccessToken: string;
+  private readonly shopifyStorefrontApiUrl: string;
+  private readonly shopifyStorefrontAccessToken: string;
   private readonly tags: DraftOrderTag[] = [];
   private readonly shopId: string = 'gid://shopify/Shop/78220263608';
   private readonly orderItemSearchCacheTtlMs = 5 * 60 * 1000;
@@ -37,6 +39,12 @@ export class AppService {
     );
     this.shopifyRestUrl2 = this.configService.get<string>(
       'SHOPIFY_REST_API_URL_2',
+    );
+    this.shopifyStorefrontApiUrl = this.configService.get<string>(
+      'SHOPIFY_STOREFRONT_API_URL',
+    );
+    this.shopifyStorefrontAccessToken = this.configService.get<string>(
+      'SHOPIFY_STOREFRONT_ACCESS_TOKEN',
     );
   }
 
@@ -233,6 +241,90 @@ export class AppService {
       .replace(/\n/g, '\\n') // escape newlines
       .replace(/\r/g, '') // remove carriage returns if any
       .trim();
+  }
+
+  private assertCustomerAccountStorefrontConfigured(): void {
+    if (
+      !this.shopifyStorefrontApiUrl?.trim() ||
+      !this.shopifyStorefrontAccessToken?.trim()
+    ) {
+      throw new Error('Account update service is not configured.');
+    }
+  }
+
+  private canonicalizeCustomerId(customerId: string): string {
+    const trimmedCustomerId = customerId?.trim();
+    const match = trimmedCustomerId?.match(
+      /^(?:gid:\/\/shopify\/Customer\/)?(\d+)$/,
+    );
+
+    if (!match) {
+      throw new Error('Customer account identity could not be verified.');
+    }
+
+    return `gid://shopify/Customer/${match[1]}`;
+  }
+
+  private rethrowAccountUpdateError(
+    error: unknown,
+    fallbackMessage: string,
+  ): never {
+    if (
+      error instanceof Error &&
+      [
+        'Invalid current password or account credentials.',
+        'Customer account identity could not be verified.',
+        'Account update service is not configured.',
+        'Unable to save account details.',
+      ].includes(error.message)
+    ) {
+      throw error;
+    }
+
+    throw new Error(fallbackMessage);
+  }
+
+  private async storefrontRequest<T>(
+    query: string,
+    variables: Record<string, unknown>,
+    safeErrorMessage: string,
+  ): Promise<T> {
+    try {
+      const response = await axios({
+        url: this.shopifyStorefrontApiUrl,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Storefront-Access-Token':
+            this.shopifyStorefrontAccessToken,
+        },
+        data: {
+          query,
+          variables,
+        },
+      });
+
+      if (response.data?.errors?.length) {
+        throw new Error(safeErrorMessage);
+      }
+
+      if (!response.data?.data) {
+        throw new Error(safeErrorMessage);
+      }
+
+      return response.data.data as T;
+    } catch (error) {
+      this.rethrowAccountUpdateError(error, safeErrorMessage);
+    }
+  }
+
+  private throwStorefrontUserErrors(
+    userErrors: Array<{ message?: string }> | undefined,
+    safeErrorMessage: string,
+  ): void {
+    if (Array.isArray(userErrors) && userErrors.length > 0) {
+      throw new Error(safeErrorMessage);
+    }
   }
 
   /** 
@@ -545,6 +637,166 @@ export class AppService {
     });
 
     return response.data.data.customer;
+  }
+
+  async updateCustomerAccount(
+    customerId: string,
+    email: string,
+    currentPassword: string,
+    firstName: string,
+    lastName: string,
+    company: string,
+    newPassword?: string,
+  ): Promise<CustomerCompany> {
+    this.assertCustomerAccountStorefrontConfigured();
+
+    const trimmedEmail = email?.trim();
+    const trimmedCurrentPassword = currentPassword?.trim();
+    const trimmedFirstName = firstName?.trim();
+    const trimmedLastName = lastName?.trim();
+    const trimmedCompany = company?.trim() || '';
+    const trimmedNewPassword =
+      newPassword === undefined ? undefined : newPassword.trim();
+
+    if (
+      !trimmedEmail ||
+      !trimmedCurrentPassword ||
+      !trimmedFirstName ||
+      !trimmedLastName
+    ) {
+      throw new Error('Unable to save account details.');
+    }
+
+    if (newPassword !== undefined && !trimmedNewPassword) {
+      throw new Error('Unable to save account details.');
+    }
+
+    const canonicalCustomerId = this.canonicalizeCustomerId(customerId);
+
+    try {
+      const authData = await this.storefrontRequest<{
+        customerAccessTokenCreate?: {
+          customerAccessToken?: { accessToken?: string | null } | null;
+          customerUserErrors?: Array<{ message?: string }>;
+        };
+      }>(
+        `
+          mutation customerAccessTokenCreate(
+            $input: CustomerAccessTokenCreateInput!
+          ) {
+            customerAccessTokenCreate(input: $input) {
+              customerAccessToken {
+                accessToken
+              }
+              customerUserErrors {
+                message
+              }
+            }
+          }
+        `,
+        {
+          input: {
+            email: trimmedEmail,
+            password: trimmedCurrentPassword,
+          },
+        },
+        'Invalid current password or account credentials.',
+      );
+
+      const authPayload = authData.customerAccessTokenCreate;
+      this.throwStorefrontUserErrors(
+        authPayload?.customerUserErrors,
+        'Invalid current password or account credentials.',
+      );
+
+      const customerAccessToken =
+        authPayload?.customerAccessToken?.accessToken?.trim();
+
+      if (!customerAccessToken) {
+        throw new Error('Invalid current password or account credentials.');
+      }
+
+      const customerData = await this.storefrontRequest<{
+        customer?: { id?: string | null } | null;
+      }>(
+        `
+          query customerAccount($customerAccessToken: String!) {
+            customer(customerAccessToken: $customerAccessToken) {
+              id
+            }
+          }
+        `,
+        {
+          customerAccessToken,
+        },
+        'Customer account identity could not be verified.',
+      );
+
+      const authenticatedCustomerId = this.canonicalizeCustomerId(
+        customerData.customer?.id || '',
+      );
+
+      if (authenticatedCustomerId !== canonicalCustomerId) {
+        throw new Error('Customer account identity could not be verified.');
+      }
+
+      const customerUpdateInput: {
+        firstName: string;
+        lastName: string;
+        password?: string;
+      } = {
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
+      };
+
+      if (trimmedNewPassword) {
+        customerUpdateInput.password = trimmedNewPassword;
+      }
+
+      const updateData = await this.storefrontRequest<{
+        customerUpdate?: {
+          customer?: { id?: string | null } | null;
+          customerUserErrors?: Array<{ message?: string }>;
+        };
+      }>(
+        `
+          mutation customerUpdate(
+            $customerAccessToken: String!
+            $customer: CustomerUpdateInput!
+          ) {
+            customerUpdate(
+              customerAccessToken: $customerAccessToken
+              customer: $customer
+            ) {
+              customer {
+                id
+              }
+              customerUserErrors {
+                message
+              }
+            }
+          }
+        `,
+        {
+          customerAccessToken,
+          customer: customerUpdateInput,
+        },
+        'Unable to save account details.',
+      );
+
+      this.throwStorefrontUserErrors(
+        updateData.customerUpdate?.customerUserErrors,
+        'Unable to save account details.',
+      );
+
+      if (!updateData.customerUpdate?.customer?.id) {
+        throw new Error('Unable to save account details.');
+      }
+
+      return this.updateCustomerCompany(canonicalCustomerId, trimmedCompany);
+    } catch (error) {
+      this.rethrowAccountUpdateError(error, 'Unable to save account details.');
+    }
   }
 
   // Edit customer company name in default address
