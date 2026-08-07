@@ -212,6 +212,7 @@ type Mutation {
   deleteCompany(company: String!): Metafield!
   setCompanyPriceLevel(company: String!, priceLevel: String): Metafield!
   updateCustomerCompany(id: String!, company: String!): CustomerCompany!
+  updateCustomerAccount(customerId: String!, email: String!, currentPassword: String!, firstName: String!, lastName: String!, company: String!, newPassword: String): CustomerCompany!
   calculateDraftOrderById(draftOrderId: String!): DraftOrder!
   createDraftOrder(customerId: String!, lineItems: [LineItemInput!]!, shippingAddress: ShippingAddressInput!, metafields: [MetafieldInput!], note: String): DraftOrder!
   updateDraftOrder(id: String!, customerId: String!, lineItems: [LineItemInput!]!, shippingAddress: ShippingAddressInput, metafields: [MetafieldInput!]): DraftOrder!

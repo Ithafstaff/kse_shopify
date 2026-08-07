@@ -20,6 +20,7 @@ describe('AppResolver requestShippingFee', () => {
     getRequestedShippingDraftOrdersPageByCustomerId: jest.Mock;
     getCustomerOrderDetails: jest.Mock;
     getCombinedDraftOrdersPage: jest.Mock;
+    updateCustomerAccount: jest.Mock;
   };
   let resolver: AppResolver;
 
@@ -31,6 +32,7 @@ describe('AppResolver requestShippingFee', () => {
       getRequestedShippingDraftOrdersPageByCustomerId: jest.fn(),
       getCustomerOrderDetails: jest.fn(),
       getCombinedDraftOrdersPage: jest.fn(),
+      updateCustomerAccount: jest.fn(),
     };
     resolver = new AppResolver(appService as unknown as AppService);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -216,5 +218,55 @@ describe('AppResolver requestShippingFee', () => {
       'po-100',
       'Company',
     );
+  });
+
+  it('delegates customer account updates to the service', async () => {
+    const result = {
+      id: 'gid://shopify/Customer/123',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      company: 'Analytical Engine',
+      priceLevel: 'Price_A',
+    };
+    appService.updateCustomerAccount.mockResolvedValue(result);
+
+    await expect(
+      resolver.updateCustomerAccount(
+        'gid://shopify/Customer/123',
+        'ada@example.com',
+        'current-password',
+        'Ada',
+        'Lovelace',
+        'Analytical Engine',
+        'new-password',
+      ),
+    ).resolves.toEqual(result);
+
+    expect(appService.updateCustomerAccount).toHaveBeenCalledWith(
+      'gid://shopify/Customer/123',
+      'ada@example.com',
+      'current-password',
+      'Ada',
+      'Lovelace',
+      'Analytical Engine',
+      'new-password',
+    );
+  });
+
+  it('keeps customer account update errors user safe', async () => {
+    appService.updateCustomerAccount.mockRejectedValue(
+      new Error('Invalid current password or account credentials.'),
+    );
+
+    await expect(
+      resolver.updateCustomerAccount(
+        'gid://shopify/Customer/123',
+        'ada@example.com',
+        'bad-password',
+        'Ada',
+        'Lovelace',
+        'Analytical Engine',
+      ),
+    ).rejects.toThrow('Invalid current password or account credentials.');
   });
 });

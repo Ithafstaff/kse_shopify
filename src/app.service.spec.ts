@@ -1654,7 +1654,7 @@ describe('AppService customer account updates', () => {
     },
   );
 
-  it('preserves leading and trailing whitespace in a non-blank new password', async () => {
+  it('trims current password for Storefront auth while preserving exact new password', async () => {
     mockedAxios
       .mockResolvedValueOnce({
         data: {
@@ -1700,13 +1700,19 @@ describe('AppService customer account updates', () => {
     await service.updateCustomerAccount(
       'gid://shopify/Customer/123',
       'ada@example.com',
-      'current-password',
+      '  current-password  ',
       'Ada',
       'Lovelace',
       'Analytical Engine',
       '  new-password  ',
     );
 
+    expect(axiosConfig(0).data.variables).toEqual({
+      input: {
+        email: 'ada@example.com',
+        password: 'current-password',
+      },
+    });
     expect(axiosConfig(2).data.variables).toEqual({
       customerAccessToken: 'customer-access-token',
       customer: {

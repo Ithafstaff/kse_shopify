@@ -696,7 +696,7 @@ export class AppService {
         {
           input: {
             email: trimmedEmail,
-            password: currentPassword,
+            password: trimmedCurrentPassword,
           },
         },
       );
