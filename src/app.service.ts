@@ -287,7 +287,6 @@ export class AppService {
   private async storefrontRequest<T>(
     query: string,
     variables: Record<string, unknown>,
-    safeErrorMessage: string,
   ): Promise<T> {
     try {
       const response = await axios({
@@ -305,16 +304,16 @@ export class AppService {
       });
 
       if (response.data?.errors?.length) {
-        throw new Error(safeErrorMessage);
+        throw new Error('Unable to save account details.');
       }
 
       if (!response.data?.data) {
-        throw new Error(safeErrorMessage);
+        throw new Error('Unable to save account details.');
       }
 
       return response.data.data as T;
     } catch (error) {
-      this.rethrowAccountUpdateError(error, safeErrorMessage);
+      this.rethrowAccountUpdateError(error, 'Unable to save account details.');
     }
   }
 
@@ -697,10 +696,9 @@ export class AppService {
         {
           input: {
             email: trimmedEmail,
-            password: trimmedCurrentPassword,
+            password: currentPassword,
           },
         },
-        'Invalid current password or account credentials.',
       );
 
       const authPayload = authData.customerAccessTokenCreate;
@@ -709,10 +707,9 @@ export class AppService {
         'Invalid current password or account credentials.',
       );
 
-      const customerAccessToken =
-        authPayload?.customerAccessToken?.accessToken?.trim();
+      const customerAccessToken = authPayload?.customerAccessToken?.accessToken;
 
-      if (!customerAccessToken) {
+      if (!customerAccessToken?.trim()) {
         throw new Error('Invalid current password or account credentials.');
       }
 
@@ -729,12 +726,20 @@ export class AppService {
         {
           customerAccessToken,
         },
-        'Customer account identity could not be verified.',
       );
 
-      const authenticatedCustomerId = this.canonicalizeCustomerId(
-        customerData.customer?.id || '',
-      );
+      if (!customerData.customer?.id) {
+        throw new Error('Unable to save account details.');
+      }
+
+      let authenticatedCustomerId: string;
+      try {
+        authenticatedCustomerId = this.canonicalizeCustomerId(
+          customerData.customer.id,
+        );
+      } catch {
+        throw new Error('Unable to save account details.');
+      }
 
       if (authenticatedCustomerId !== canonicalCustomerId) {
         throw new Error('Customer account identity could not be verified.');
@@ -750,7 +755,7 @@ export class AppService {
       };
 
       if (trimmedNewPassword) {
-        customerUpdateInput.password = trimmedNewPassword;
+        customerUpdateInput.password = newPassword;
       }
 
       const updateData = await this.storefrontRequest<{
@@ -781,7 +786,6 @@ export class AppService {
           customerAccessToken,
           customer: customerUpdateInput,
         },
-        'Unable to save account details.',
       );
 
       this.throwStorefrontUserErrors(
@@ -793,7 +797,10 @@ export class AppService {
         throw new Error('Unable to save account details.');
       }
 
-      return this.updateCustomerCompany(canonicalCustomerId, trimmedCompany);
+      return await this.updateCustomerCompany(
+        canonicalCustomerId,
+        trimmedCompany,
+      );
     } catch (error) {
       this.rethrowAccountUpdateError(error, 'Unable to save account details.');
     }

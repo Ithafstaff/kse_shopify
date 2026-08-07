@@ -1568,6 +1568,29 @@ describe('AppService customer account updates', () => {
     expect(updateCustomerCompanySpy).not.toHaveBeenCalled();
   });
 
+  it('maps Storefront GraphQL failures to a generic save error without syncing company data', async () => {
+    mockedAxios.mockResolvedValueOnce({
+      data: {
+        errors: [{ message: 'Throttled' }],
+      },
+    });
+    const updateCustomerCompanySpy = jest.spyOn(service, 'updateCustomerCompany');
+
+    await expect(
+      service.updateCustomerAccount(
+        'gid://shopify/Customer/123',
+        'ada@example.com',
+        'current-password',
+        'Ada',
+        'Lovelace',
+        'Analytical Engine',
+        'new-password',
+      ),
+    ).rejects.toThrow('Unable to save account details.');
+
+    expect(updateCustomerCompanySpy).not.toHaveBeenCalled();
+  });
+
   it('rejects a mismatched authenticated customer identity without syncing company data', async () => {
     mockedAxios
       .mockResolvedValueOnce({
@@ -1630,6 +1653,69 @@ describe('AppService customer account updates', () => {
       expect(mockedAxios).not.toHaveBeenCalled();
     },
   );
+
+  it('preserves leading and trailing whitespace in a non-blank new password', async () => {
+    mockedAxios
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerAccessTokenCreate: {
+              customerAccessToken: {
+                accessToken: 'customer-access-token',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customer: {
+              id: 'gid://shopify/Customer/123',
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerUpdate: {
+              customer: {
+                id: 'gid://shopify/Customer/123',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      });
+    jest.spyOn(service, 'updateCustomerCompany').mockResolvedValue({
+      id: 'gid://shopify/Customer/123',
+      firstName: 'Ada',
+      lastName: 'Lovelace',
+      company: 'Analytical Engine',
+      priceLevel: 'Price_A',
+    });
+
+    await service.updateCustomerAccount(
+      'gid://shopify/Customer/123',
+      'ada@example.com',
+      'current-password',
+      'Ada',
+      'Lovelace',
+      'Analytical Engine',
+      '  new-password  ',
+    );
+
+    expect(axiosConfig(2).data.variables).toEqual({
+      customerAccessToken: 'customer-access-token',
+      customer: {
+        firstName: 'Ada',
+        lastName: 'Lovelace',
+        password: '  new-password  ',
+      },
+    });
+  });
 
   it('omits password from the Storefront profile update when no new password is provided', async () => {
     mockedAxios
@@ -1701,6 +1787,58 @@ describe('AppService customer account updates', () => {
     expect(axiosConfig(2).data.variables.customer).not.toHaveProperty(
       'password',
     );
+  });
+
+  it('maps company synchronization failures to a generic save error after the Storefront update', async () => {
+    mockedAxios
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerAccessTokenCreate: {
+              customerAccessToken: {
+                accessToken: 'customer-access-token',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customer: {
+              id: 'gid://shopify/Customer/123',
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: {
+            customerUpdate: {
+              customer: {
+                id: 'gid://shopify/Customer/123',
+              },
+              customerUserErrors: [],
+            },
+          },
+        },
+      });
+    jest
+      .spyOn(service, 'updateCustomerCompany')
+      .mockRejectedValue(new Error('Admin API rejected company update.'));
+
+    await expect(
+      service.updateCustomerAccount(
+        'gid://shopify/Customer/123',
+        'ada@example.com',
+        'current-password',
+        'Ada',
+        'Lovelace',
+        'Analytical Engine',
+        'new-password',
+      ),
+    ).rejects.toThrow('Unable to save account details.');
   });
 });
 
