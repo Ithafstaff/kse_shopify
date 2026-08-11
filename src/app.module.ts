@@ -5,6 +5,7 @@ import { join } from 'path';
 import { AppService } from './app.service';
 import { AppResolver } from './app.resolver';
 import { ConfigModule } from '@nestjs/config';
+import { EmailModule } from './email/email.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { AccountRequestModule } from './account-request/account-request.module';
 import { AppProxyAccountController } from './app-proxy-account.controller';
@@ -23,6 +24,7 @@ import { AppProxyAccountController } from './app-proxy-account.controller';
             autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
             playground: false
         }),
+        EmailModule,
         AccountRequestModule,
     ],
     controllers: [AppProxyAccountController],

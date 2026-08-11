@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { AccountRequestService } from './account-request.service';
-import { GmailMailService } from './gmail-mail.service';
+import { ResendMailService } from '../email/resend-mail.service';
 
 describe('AccountRequestService', () => {
   const baseInput = {
@@ -20,7 +20,7 @@ describe('AccountRequestService', () => {
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    sendMessage.mockResolvedValue({ id: 'gmail-message-id' });
+    sendMessage.mockResolvedValue({ id: 'resend-message-id' });
 
     const configService = {
       get: jest.fn((key: string) => {
@@ -28,9 +28,8 @@ describe('AccountRequestService', () => {
           ACCOUNT_REQUEST_ENABLED: 'true',
           ACCOUNT_REQUEST_ALLOWED_APPLICANT_EMAIL: 'gerald.latagan@gmail.com',
           ACCOUNT_REQUEST_RECIPIENT: 'it@hafstaff.com',
-          GMAIL_SENDER_EMAIL: 'it@hafstaff.com',
-          GMAIL_SENDER_NAME: 'KSE Suppliers Test',
-          GMAIL_REPLY_TO: 'it@hafstaff.com',
+          EMAIL_FROM: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
+          EMAIL_REPLY_TO: 'cs@ksesuppliers.com',
         };
         return values[key];
       }),
@@ -38,7 +37,7 @@ describe('AccountRequestService', () => {
 
     service = new AccountRequestService(configService, {
       sendMessage,
-    } as unknown as GmailMailService);
+    } as unknown as ResendMailService);
   });
 
   afterEach(() => {
@@ -53,16 +52,16 @@ describe('AccountRequestService', () => {
     expect(sendMessage).toHaveBeenCalledTimes(2);
     expect(sendMessage.mock.calls[0][0]).toEqual(
       expect.objectContaining({
-        from: { email: 'it@hafstaff.com', name: 'KSE Suppliers Test' },
+        from: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
         to: 'it@hafstaff.com',
         replyTo: 'gerald.latagan@gmail.com',
       }),
     );
     expect(sendMessage.mock.calls[1][0]).toEqual(
       expect.objectContaining({
-        from: { email: 'it@hafstaff.com', name: 'KSE Suppliers Test' },
+        from: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
         to: 'gerald.latagan@gmail.com',
-        replyTo: 'it@hafstaff.com',
+        replyTo: 'cs@ksesuppliers.com',
         subject: 'We received your KSE account request',
       }),
     );
@@ -98,7 +97,7 @@ describe('AccountRequestService', () => {
     } as unknown as ConfigService;
     service = new AccountRequestService(disabledConfig, {
       sendMessage,
-    } as unknown as GmailMailService);
+    } as unknown as ResendMailService);
 
     await expect(service.requestAccount(baseInput)).resolves.toEqual({
       success: false,

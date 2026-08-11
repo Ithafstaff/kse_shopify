@@ -8,7 +8,7 @@ import {
   buildCustomerAccountRequestEmail,
   buildInternalAccountRequestEmail,
 } from './email-templates';
-import { GmailMailService } from './gmail-mail.service';
+import { ResendMailService } from '../email/resend-mail.service';
 
 const GENERIC_VALIDATION_MESSAGE =
   'Please check the account request form and try again.';
@@ -27,7 +27,7 @@ export class AccountRequestService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly gmailMailService: GmailMailService,
+    private readonly resendMailService: ResendMailService,
   ) {}
 
   async requestAccount(
@@ -68,17 +68,16 @@ export class AccountRequestService {
       };
     }
 
-    const senderEmail = this.configService.get<string>('GMAIL_SENDER_EMAIL');
-    const senderName = this.configService.get<string>('GMAIL_SENDER_NAME');
-    const fallbackReplyTo = this.configService.get<string>('GMAIL_REPLY_TO');
+    const sender = this.configService.get<string>('EMAIL_FROM');
+    const fallbackReplyTo = this.configService.get<string>('EMAIL_REPLY_TO');
     const internalRecipient = this.configService.get<string>(
       'ACCOUNT_REQUEST_RECIPIENT',
     );
 
-    if (!senderEmail || !internalRecipient) {
+    if (!sender || !internalRecipient) {
       console.error('Account request email configuration is incomplete.', {
         requestId,
-        missingSender: !senderEmail,
+        missingSender: !sender,
         missingRecipient: !internalRecipient,
       });
       return {
@@ -100,8 +99,8 @@ export class AccountRequestService {
     );
 
     try {
-      await this.gmailMailService.sendMessage({
-        from: { email: senderEmail, name: senderName },
+      await this.resendMailService.sendMessage({
+        from: sender,
         to: internalRecipient,
         replyTo: normalized.email,
         ...internalEmail,
@@ -119,10 +118,10 @@ export class AccountRequestService {
     }
 
     try {
-      await this.gmailMailService.sendMessage({
-        from: { email: senderEmail, name: senderName },
+      await this.resendMailService.sendMessage({
+        from: sender,
         to: normalized.email,
-        replyTo: fallbackReplyTo || senderEmail,
+        replyTo: fallbackReplyTo || sender,
         ...customerEmail,
       });
     } catch (error) {
