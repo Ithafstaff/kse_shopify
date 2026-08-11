@@ -1,14 +1,10 @@
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
 import { AppService } from './app.service';
 import { ShippingAddressInput } from './dto/shipping-address.input';
-
-jest.mock('nodemailer', () => ({
-  createTransport: jest.fn(),
-}));
+import { ResendMailService } from './email/resend-mail.service';
 
 describe('AppService shipping quote emails', () => {
-  const sendMail = jest.fn();
+  const sendMessage = jest.fn();
   const shippingAddress: ShippingAddressInput = {
     firstName: 'Ada',
     lastName: 'Lovelace',
@@ -25,14 +21,13 @@ describe('AppService shipping quote emails', () => {
     jest.clearAllMocks();
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    sendMail.mockResolvedValue({ messageId: 'message-id' });
-    (nodemailer.createTransport as jest.Mock).mockReturnValue({ sendMail });
+    sendMessage.mockResolvedValue({ id: 'resend-message-id' });
 
     const configService = {
       get: jest.fn((key: string) => {
         const values = {
-          EMAIL_USER: 'mailer@ksesuppliers.com',
-          EMAIL_PASS: 'secret',
+          EMAIL_FROM: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
+          EMAIL_REPLY_TO: 'cs@ksesuppliers.com',
           SHOPIFY_API_URL: 'https://shopify.example/graphql',
           SHOPIFY_ACCESS_TOKEN: 'token',
           SHOPIFY_REST_API_URL_2: 'https://shopify.example',
@@ -41,7 +36,9 @@ describe('AppService shipping quote emails', () => {
       }),
     } as unknown as ConfigService;
 
-    service = new AppService(configService);
+    service = new AppService(configService, {
+      sendMessage,
+    } as unknown as ResendMailService);
     jest.spyOn(service, 'getDraftOrderDetails').mockResolvedValue({
       id: 1001,
       name: '#D1001',
@@ -83,11 +80,12 @@ describe('AppService shipping quote emails', () => {
       shippingAddress,
     );
 
-    const customerMessage = sendMail.mock.calls[0][0];
+    const customerMessage = sendMessage.mock.calls[0][0];
     expect(customerMessage).toEqual(
       expect.objectContaining({
-        from: 'mailer@ksesuppliers.com',
+        from: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
         to: 'customer@example.com',
+        replyTo: 'cs@ksesuppliers.com',
         subject: 'Shipping Quote Request Received - Order #D1001',
       }),
     );
@@ -110,14 +108,15 @@ describe('AppService shipping quote emails', () => {
       shippingAddress,
     );
 
-    const internalMessage = sendMail.mock.calls[1][0];
+    const internalMessage = sendMessage.mock.calls[1][0];
     expect(internalMessage).toEqual(
       expect.objectContaining({
-        from: 'mailer@ksesuppliers.com',
+        from: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
         to: 'orders@ksesuppliers.com',
         subject: 'Shipping Quote Request - Order #D1001',
       }),
     );
+    expect(internalMessage).not.toHaveProperty('replyTo');
     expect(internalMessage.html).toContain('customer-123');
     expect(internalMessage.html).toContain('Ada Lovelace');
     expect(internalMessage.html).toContain('customer@example.com');
@@ -138,14 +137,14 @@ describe('AppService shipping quote emails', () => {
       shippingAddress,
     );
 
-    for (const [{ html }] of sendMail.mock.calls) {
+    for (const [{ html }] of sendMessage.mock.calls) {
       expect(html).not.toContain('Analytical <Engine>');
       expect(html).not.toContain('Blue <Widget>');
       expect(html).not.toContain('123 Main & First');
     }
   });
 
-  it('configures finite SMTP connection and socket timeouts', async () => {
+  it('uses the configured Resend sender for both messages', async () => {
     await (service as any).sendShippingQuoteEmails(
       'customer-123',
       'gid://shopify/DraftOrder/1001',
@@ -153,23 +152,20 @@ describe('AppService shipping quote emails', () => {
       shippingAddress,
     );
 
-    expect(nodemailer.createTransport).toHaveBeenCalledWith(
-      expect.objectContaining({
-        connectionTimeout: 10_000,
-        greetingTimeout: 10_000,
-        socketTimeout: 30_000,
-      }),
+    expect(sendMessage.mock.calls[0][0].from).toBe(
+      'KSE Suppliers <orders@notifications.ksesuppliers.com>',
+    );
+    expect(sendMessage.mock.calls[1][0].from).toBe(
+      'KSE Suppliers <orders@notifications.ksesuppliers.com>',
     );
   });
 
-  it('logs sanitized SMTP diagnostics when email delivery fails', async () => {
-    const smtpError = Object.assign(new Error('Connection timed out'), {
-      code: 'ETIMEDOUT',
-      command: 'CONN',
-      responseCode: 421,
-      response: 'Service unavailable',
+  it('logs sanitized Resend diagnostics when email delivery fails', async () => {
+    const resendError = Object.assign(new Error('Resend email delivery failed.'), {
+      code: 'ERR_BAD_RESPONSE',
+      statusCode: 503,
     });
-    sendMail.mockRejectedValueOnce(smtpError);
+    sendMessage.mockRejectedValueOnce(resendError);
 
     await expect(
       (service as any).sendShippingQuoteEmails(
@@ -183,20 +179,15 @@ describe('AppService shipping quote emails', () => {
     expect(console.error).toHaveBeenCalledWith(
       'Failed to send shipping quote emails for draft order 1001.',
       {
-        message: 'Connection timed out',
-        code: 'ETIMEDOUT',
-        command: 'CONN',
-        responseCode: 421,
-        response: 'Service unavailable',
+        message: 'Resend email delivery failed.',
+        code: 'ERR_BAD_RESPONSE',
+        statusCode: 503,
       },
-    );
-    expect(JSON.stringify((console.error as jest.Mock).mock.calls)).not.toContain(
-      'secret',
     );
   });
 
   it('rejects when either email cannot be sent', async () => {
-    sendMail.mockRejectedValueOnce(new Error('SMTP unavailable'));
+    sendMessage.mockRejectedValueOnce(new Error('Resend unavailable'));
 
     await expect(
       (service as any).sendShippingQuoteEmails(

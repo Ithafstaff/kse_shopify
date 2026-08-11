@@ -17,6 +17,7 @@ import { title } from 'process';
 import { CustomerCompany } from './dto/customer-company.dto';
 import { skip } from 'rxjs';
 import { createHmac, timingSafeEqual } from 'crypto';
+import { ResendMailService } from './email/resend-mail.service';
 
 type AppProxyQuery = Record<string, string | string[] | undefined>;
 
@@ -46,7 +47,10 @@ export class AppService {
     { expiresAt: number; text: string }
   >();
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly resendMailService: ResendMailService,
+  ) {
     this.shopifyApiUrl = this.configService.get<string>('SHOPIFY_API_URL');
     this.shopifyAccessToken = this.configService.get<string>(
       'SHOPIFY_ACCESS_TOKEN',
@@ -3741,7 +3745,7 @@ export class AppService {
 
     const pageSize = Math.min(Math.max(first, 1), 10);
     let shopifyAfter = this.decodeCompanyOrderCursor(after);
-    let lastConsumedEdgeCursor = shopifyAfter;
+    let pageEndCursor: string | null = null;
     let hasMoreOrders = false;
     let scanning = true;
     const orders: DraftOrder[] = [];
@@ -3846,7 +3850,6 @@ export class AppService {
           }
 
           seenCursors.add(edge.cursor);
-          lastConsumedEdgeCursor = edge.cursor;
           const order = edge.node;
           const isPersonalOrder =
             order.customer?.id === `gid://shopify/Customer/${numericCustomerId}`;
@@ -3863,6 +3866,12 @@ export class AppService {
             matchesOrderScope &&
             this.orderMatchesSearch(order, search)
           ) {
+            if (orders.length === pageSize) {
+              hasMoreOrders = true;
+              scanning = false;
+              break;
+            }
+
             orders.push({
               id: order.id,
               name: order.name,
@@ -3888,14 +3897,10 @@ export class AppService {
               totalPrice: Number(order.totalPriceSet?.shopMoney?.amount) || 0,
               lineItems: [],
             });
-          }
 
-          if (orders.length === pageSize) {
-            hasMoreOrders =
-              index < connection.edges.length - 1 ||
-              connection.pageInfo.hasNextPage;
-            scanning = false;
-            break;
+            if (orders.length === pageSize) {
+              pageEndCursor = edge.cursor;
+            }
           }
         }
 
@@ -3921,8 +3926,8 @@ export class AppService {
         pageInfo: {
           hasNextPage: hasMoreOrders,
           endCursor:
-            hasMoreOrders && lastConsumedEdgeCursor
-              ? this.encodeCompanyOrderCursor(lastConsumedEdgeCursor)
+            hasMoreOrders && pageEndCursor
+              ? this.encodeCompanyOrderCursor(pageEndCursor)
               : null,
         },
       };
@@ -4107,17 +4112,8 @@ export class AppService {
     const subtotal = parseFloat(
       draftOrder?.subtotal_price || draftOrder?.total_price || '0',
     ).toFixed(2);
-    const from = this.configService.get<string>('EMAIL_USER');
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      connectionTimeout: 10_000,
-      greetingTimeout: 10_000,
-      socketTimeout: 30_000,
-      auth: {
-        user: from,
-        pass: this.configService.get<string>('EMAIL_PASS'),
-      },
-    });
+    const from = this.configService.get<string>('EMAIL_FROM');
+    const replyTo = this.configService.get<string>('EMAIL_REPLY_TO');
 
     const addressHtml = `
       ${this.escapeHtml(shippingAddress.company)}<br>
@@ -4127,6 +4123,16 @@ export class AppService {
       ${this.escapeHtml(shippingAddress.city)}, ${this.escapeHtml(shippingAddress.province)} ${this.escapeHtml(shippingAddress.zip)}<br>
       ${this.escapeHtml(shippingAddress.country)}
     `;
+    const addressText = [
+      shippingAddress.company,
+      `${shippingAddress.firstName} ${shippingAddress.lastName}`,
+      shippingAddress.address1,
+      shippingAddress.address2,
+      `${shippingAddress.city}, ${shippingAddress.province} ${shippingAddress.zip}`,
+      shippingAddress.country,
+    ]
+      .filter(Boolean)
+      .join('\n');
     const productRows = lineItems
       .map((item) => {
         const quantity = Number(item.quantity) || 0;
@@ -4144,11 +4150,30 @@ export class AppService {
         `;
       })
       .join('');
+    const productText = lineItems
+      .map((item) => {
+        const quantity = Number(item.quantity) || 0;
+        const unitPrice = parseFloat(item.price || item.variant?.price || '0');
+        const lineTotal = parseFloat(
+          item.line_price || String(unitPrice * quantity),
+        );
+        return `${item.title} x${quantity} - ${unitPrice.toFixed(2)} ${currency} each - ${lineTotal.toFixed(2)} ${currency} total`;
+      })
+      .join('\n');
 
     const customerMailOptions = {
       from,
       to: customerEmail,
+      replyTo,
       subject: `Shipping Quote Request Received - Order ${orderNumber}`,
+      text: [
+        `We've received your request for a shipping quote for order ${orderNumber}.`,
+        "Our team will review the shipping details and contact you once the quote is ready.",
+        `Shipping address:\n${addressText}`,
+        `Order summary:\n${productText}`,
+        `Order subtotal: ${subtotal} ${currency}`,
+        'No payment or further action is required until the shipping quote has been prepared.',
+      ].join('\n\n'),
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #f9f9f9;">
           <h2 style="color: #951828;">Shipping Quote Request Received</h2>
@@ -4170,6 +4195,17 @@ export class AppService {
       from,
       to: 'orders@ksesuppliers.com',
       subject: `Shipping Quote Request - Order ${orderNumber}`,
+      text: [
+        `Shipping Quote Request - Order ${orderNumber}`,
+        `User ID: ${userId}`,
+        `Customer: ${customer.first_name || ''} ${customer.last_name || ''} (${customerEmail})`,
+        `Company: ${shippingAddress.company || 'N/A'}`,
+        `PO Number: ${poNumber}`,
+        `Shipping address:\n${addressText}`,
+        `Order details:\n${productText}`,
+        `Order subtotal: ${subtotal} ${currency}`,
+        `View Draft Order: https://admin.shopify.com/store/kse-suppliers/draft_orders/${encodeURIComponent(numericDraftOrderId)}`,
+      ].join('\n\n'),
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #f9f9f9;">
           <h2 style="color: #951828;">Shipping Quote Request</h2>
@@ -4189,26 +4225,22 @@ export class AppService {
 
     try {
       await Promise.all([
-        transporter.sendMail(customerMailOptions),
-        transporter.sendMail(internalMailOptions),
+        this.resendMailService.sendMessage(customerMailOptions),
+        this.resendMailService.sendMessage(internalMailOptions),
       ]);
       console.log(`Shipping quote emails sent for draft order ${numericDraftOrderId}.`);
       return true;
     } catch (error) {
       const mailError = error as Error & {
         code?: string;
-        command?: string;
-        responseCode?: number;
-        response?: string;
+        statusCode?: number;
       };
       console.error(
         `Failed to send shipping quote emails for draft order ${numericDraftOrderId}.`,
         {
           message: mailError.message,
           code: mailError.code,
-          command: mailError.command,
-          responseCode: mailError.responseCode,
-          response: mailError.response,
+          statusCode: mailError.statusCode,
         },
       );
       throw new Error('Failed to send shipping quote emails.');

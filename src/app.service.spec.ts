@@ -2,6 +2,7 @@ import axios from 'axios';
 import { ConfigService } from '@nestjs/config';
 import { AppService } from './app.service';
 import { createHmac } from 'crypto';
+import { ResendMailService } from './email/resend-mail.service';
 
 jest.mock('axios');
 
@@ -37,6 +38,12 @@ function configService(): ConfigService {
       return values[key];
     }),
   } as unknown as ConfigService;
+}
+
+function resendMailService(): ResendMailService {
+  return {
+    sendMessage: jest.fn(),
+  } as unknown as ResendMailService;
 }
 
 function signedAppProxyQuery(
@@ -188,7 +195,7 @@ describe('AppService draft order address persistence', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AppService(configService());
+    service = new AppService(configService(), resendMailService());
   });
 
   it('sends recipient names with the shipping address update', async () => {
@@ -260,7 +267,7 @@ describe('AppService draft order checkout metadata', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AppService(configService());
+    service = new AppService(configService(), resendMailService());
   });
 
   it('requests enough variant metafields for checkout item details', async () => {
@@ -316,7 +323,7 @@ describe('AppService order pagination', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AppService(configService());
+    service = new AppService(configService(), resendMailService());
   });
 
   describe('getCompanyDraftOrdersPage', () => {
@@ -918,6 +925,39 @@ describe('AppService order pagination', () => {
       expect(axiosRequest(1).data.variables.after).toBe('cursor-2');
     });
 
+    it('does not advertise another combined page when later Shopify edges do not match', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(
+          shopifyPage(
+            [
+              orderEdge('1', 'cursor-1', ['Placed', 'company: Other']),
+              orderEdge('2', 'cursor-2', ['Placed', 'company: Other']),
+              orderEdge('3', 'cursor-3', ['Placed', 'company: Other'], '0.00', null, {
+                customer: { id: 'gid://shopify/Customer/2' },
+              }),
+            ],
+            true,
+          ),
+        )
+        .mockResolvedValueOnce(
+          shopifyPage([
+            orderEdge('4', 'cursor-4', ['Placed', 'company: Other'], '0.00', null, {
+              customer: { id: 'gid://shopify/Customer/2' },
+            }),
+          ]),
+        );
+
+      const result = await service.getCombinedDraftOrdersPage(
+        'gid://shopify/Customer/1',
+        'Acme',
+        2,
+      );
+
+      expect(result.orders.map((order) => order.name)).toEqual(['#D1', '#D2']);
+      expect(result.pageInfo).toEqual({ hasNextPage: false, endCursor: null });
+      expect(mockedAxios).toHaveBeenCalledTimes(2);
+    });
+
     it.each([
       ['order number', '#D99'],
       ['customer first name', 'Ada'],
@@ -1402,7 +1442,7 @@ describe('AppService customer pagination', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AppService(configService());
+    service = new AppService(configService(), resendMailService());
   });
 
   it('searches customers with Shopify query and cursor pagination', async () => {
@@ -1450,7 +1490,7 @@ describe('AppService customer account updates', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new AppService(configService());
+    service = new AppService(configService(), resendMailService());
   });
 
   it('updates the authenticated customer profile and then synchronizes company data', async () => {
@@ -2012,7 +2052,7 @@ describe('AppService shipping address validation', () => {
   let service: AppService;
 
   beforeEach(() => {
-    service = new AppService(configService());
+    service = new AppService(configService(), resendMailService());
   });
 
   it.each([
