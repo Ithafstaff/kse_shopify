@@ -100,6 +100,41 @@ describe('AppService shipping quote emails', () => {
     );
   });
 
+  it('uses the discounted customer price in both order-summary messages', async () => {
+    jest.spyOn(service, 'getDraftOrderDetails').mockResolvedValueOnce({
+      name: '#D1002',
+      currency: 'USD',
+      subtotal_price: '27.99',
+      total_price: '27.99',
+      customer: { first_name: 'Ada', last_name: 'Lovelace' },
+      line_items: [
+        {
+          title: 'Global Collection T180 Sheets & Pillowcases',
+          quantity: 1,
+          price: '499.99',
+          applied_discount: { value: '472.00', value_type: 'fixed_amount' },
+        },
+      ],
+    });
+
+    await (service as any).sendShippingQuoteEmails(
+      'customer-123',
+      'gid://shopify/DraftOrder/1002',
+      'customer@example.com',
+      shippingAddress,
+    );
+
+    for (const [{ html, text }] of sendMessage.mock.calls) {
+      expect(html).toContain('27.99 USD each');
+      expect(html).toContain('27.99 USD total');
+      expect(html).not.toContain('499.99 USD each');
+      expect(html).toContain('Order subtotal: 27.99 USD');
+      expect(text).toContain('27.99 USD each');
+      expect(text).toContain('27.99 USD total');
+      expect(text).toContain('Order subtotal: 27.99 USD');
+    }
+  });
+
   it('sends a templated operational email to orders', async () => {
     await (service as any).sendShippingQuoteEmails(
       'customer-123',

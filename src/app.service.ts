@@ -4133,13 +4133,35 @@ export class AppService {
     ]
       .filter(Boolean)
       .join('\n');
-    const productRows = lineItems
-      .map((item) => {
-        const quantity = Number(item.quantity) || 0;
-        const unitPrice = parseFloat(item.price || item.variant?.price || '0');
-        const lineTotal = parseFloat(
-          item.line_price || String(unitPrice * quantity),
+    const pricedLineItems = lineItems.map((item) => {
+      const quantity = Number(item.quantity) || 0;
+      const originalUnitPrice = parseFloat(
+        item.price || item.variant?.price || '0',
+      );
+      const discountValue = parseFloat(item.applied_discount?.value || '0');
+      const discountType = String(
+        item.applied_discount?.value_type || '',
+      ).toUpperCase();
+
+      let unitPrice = originalUnitPrice;
+      if (discountType === 'FIXED_AMOUNT') {
+        unitPrice = Math.max(originalUnitPrice - discountValue, 0);
+      } else if (discountType === 'PERCENTAGE') {
+        unitPrice = Math.max(
+          originalUnitPrice * ((100 - discountValue) / 100),
+          0,
         );
+      }
+
+      const lineTotal =
+        discountType === 'FIXED_AMOUNT' || discountType === 'PERCENTAGE'
+          ? unitPrice * quantity
+          : parseFloat(item.line_price || String(unitPrice * quantity));
+
+      return { item, quantity, unitPrice, lineTotal };
+    });
+    const productRows = pricedLineItems
+      .map(({ item, quantity, unitPrice, lineTotal }) => {
         return `
           <tr>
             <td style="padding: 8px; border: 1px solid #ddd;">${this.escapeHtml(item.title)}</td>
@@ -4150,13 +4172,8 @@ export class AppService {
         `;
       })
       .join('');
-    const productText = lineItems
-      .map((item) => {
-        const quantity = Number(item.quantity) || 0;
-        const unitPrice = parseFloat(item.price || item.variant?.price || '0');
-        const lineTotal = parseFloat(
-          item.line_price || String(unitPrice * quantity),
-        );
+    const productText = pricedLineItems
+      .map(({ item, quantity, unitPrice, lineTotal }) => {
         return `${item.title} x${quantity} - ${unitPrice.toFixed(2)} ${currency} each - ${lineTotal.toFixed(2)} ${currency} total`;
       })
       .join('\n');
