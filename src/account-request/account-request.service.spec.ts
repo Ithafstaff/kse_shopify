@@ -26,7 +26,6 @@ describe('AccountRequestService', () => {
       get: jest.fn((key: string) => {
         const values = {
           ACCOUNT_REQUEST_ENABLED: 'true',
-          ACCOUNT_REQUEST_ALLOWED_APPLICANT_EMAIL: 'gerald.latagan@gmail.com',
           ACCOUNT_REQUEST_RECIPIENT: 'it@hafstaff.com',
           EMAIL_FROM: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
           EMAIL_REPLY_TO: 'cs@ksesuppliers.com',
@@ -107,18 +106,50 @@ describe('AccountRequestService', () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it('rejects applicants outside the test allowlist without sending email', async () => {
+  it('accepts any valid applicant email without an allowlist', async () => {
+    const result = await service.requestAccount({
+      ...baseInput,
+      email: 'customer@example.com',
+    });
+
+    expect(result).toEqual({
+      success: true,
+      message:
+        'Your account request has been received. We sent a confirmation to your email address.',
+      requestId: expect.any(String),
+    });
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(sendMessage.mock.calls[0][0].replyTo).toBe('customer@example.com');
+    expect(sendMessage.mock.calls[1][0].to).toBe('customer@example.com');
+  });
+
+  it('limits each email to three valid requests within 15 minutes', async () => {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await expect(
+        service.requestAccount({
+          ...baseInput,
+          businessName: `Business ${attempt}`,
+        }),
+      ).resolves.toEqual({
+        success: true,
+        message:
+          'Your account request has been received. We sent a confirmation to your email address.',
+        requestId: expect.any(String),
+      });
+    }
+
     await expect(
       service.requestAccount({
         ...baseInput,
-        email: 'someone@example.com',
+        businessName: 'Business 4',
       }),
     ).resolves.toEqual({
       success: false,
-      message: 'Account requests are not available for this email address.',
+      message: 'We could not submit your account request. Please try again later.',
       requestId: expect.any(String),
     });
-    expect(sendMessage).not.toHaveBeenCalled();
+
+    expect(sendMessage).toHaveBeenCalledTimes(6);
   });
 
   it.each([
