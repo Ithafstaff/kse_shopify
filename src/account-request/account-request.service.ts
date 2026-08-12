@@ -16,8 +16,6 @@ const GENERIC_INTERNAL_FAILURE_MESSAGE =
   'We could not submit your account request. Please try again later.';
 const DISABLED_MESSAGE =
   'Account requests are not available right now. Please try again later.';
-const ALLOWLIST_MESSAGE =
-  'Account requests are not available for this email address.';
 const CUSTOMER_EMAIL_FAILURE_MESSAGE =
   'Your account request was received, but we could not send a confirmation email.';
 
@@ -50,13 +48,6 @@ export class AccountRequestService {
         message: GENERIC_VALIDATION_MESSAGE,
         requestId,
       };
-    }
-
-    if (!this.isAllowedApplicant(normalized.email)) {
-      console.warn('Account request rejected by applicant allowlist.', {
-        requestId,
-      });
-      return { success: false, message: ALLOWLIST_MESSAGE, requestId };
     }
 
     if (!this.consumeRateLimit(normalized.email)) {
@@ -195,14 +186,6 @@ export class AccountRequestService {
 
   private isEnabled(): boolean {
     return this.configService.get<string>('ACCOUNT_REQUEST_ENABLED') === 'true';
-  }
-
-  private isAllowedApplicant(email: string): boolean {
-    const allowed = this.configService.get<string>(
-      'ACCOUNT_REQUEST_ALLOWED_APPLICANT_EMAIL',
-    );
-
-    return Boolean(allowed && allowed.toLowerCase() === email.toLowerCase());
   }
 
   private consumeRateLimit(email: string): boolean {
