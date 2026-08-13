@@ -84,10 +84,7 @@ export class AccountRequestService {
       requestId,
       submittedAt,
     );
-    const customerEmail = buildCustomerAccountRequestEmail(
-      normalized,
-      requestId,
-    );
+    const customerEmail = buildCustomerAccountRequestEmail(normalized);
 
     try {
       await this.resendMailService.sendMessage({

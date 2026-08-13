@@ -1,4 +1,5 @@
 import { AccountRequestInput } from './account-request.input';
+import { buildKseEmailLayout } from '../email/kse-email-layout';
 
 export type NormalizedAccountRequest = Required<AccountRequestInput>;
 
@@ -17,7 +18,7 @@ export function buildInternalAccountRequestEmail(
   submittedAt: Date,
 ) {
   const submittedAtIso = submittedAt.toISOString();
-  const subject = `New website account request - ${input.businessName} - ${requestId}`;
+  const subject = `New Website Account Request - ${input.businessName} - ${requestId}`;
   const rows = [
     ['Request ID', requestId],
     ['Applicant type', input.applicantType],
@@ -32,43 +33,61 @@ export function buildInternalAccountRequestEmail(
   return {
     subject,
     text: rows.map(([label, value]) => `${label}: ${value}`).join('\n'),
-    html: `
-      <h1>New website account request</h1>
-      <table cellpadding="6" cellspacing="0" border="0">
-        ${rows
-          .map(
-            ([label, value]) =>
-              `<tr><th align="left">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`,
-          )
-          .join('')}
-      </table>
-    `,
+    html: buildKseEmailLayout({
+      title: 'New Website Account Request',
+      preheader: escapeHtml(subject),
+      body: `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+          ${rows
+            .map(
+              ([label, value]) => `
+                <tr>
+                  <td style="width:34%; padding:11px 12px 11px 0; border-bottom:1px solid #e5e7eb; color:#4b5563; font-size:13px; line-height:1.4; font-weight:700; vertical-align:top;">${escapeHtml(label)}</td>
+                  <td style="padding:11px 0; border-bottom:1px solid #e5e7eb; color:#111827; font-size:14px; line-height:1.4; vertical-align:top;">${escapeHtml(value)}</td>
+                </tr>
+              `,
+            )
+            .join('')}
+        </table>
+      `,
+    }),
   };
 }
 
 export function buildCustomerAccountRequestEmail(
   input: NormalizedAccountRequest,
-  requestId: string,
 ) {
-  const subject = 'We received your KSE account request';
+  const subject = 'We Received Your KSE Account Request';
   const text = [
     `Hello ${input.contactName},`,
     '',
     'We received your request for access to KSE Suppliers.',
     'Our team will review your information and contact you after approval.',
     'Submitting this request does not create or activate an account immediately.',
-    '',
-    `Request ID: ${requestId}`,
   ].join('\n');
-  const html = `
-    <p>Hello ${escapeHtml(input.contactName)},</p>
-    <p>We received your request for access to KSE Suppliers.</p>
-    <p>Our team will review your information and contact you after approval.</p>
-    <p>Submitting this request does not create or activate an account immediately.</p>
-    <p><strong>Request ID:</strong> ${escapeHtml(requestId)}</p>
-    <p><strong>Business:</strong> ${escapeHtml(input.businessName)}</p>
-    <p><strong>Comments:</strong> ${escapeHtml(input.comments || 'None provided')}</p>
-  `;
+  const html = buildKseEmailLayout({
+    title: 'We Received Your KSE Account Request',
+    preheader: subject,
+    body: `
+      <p style="margin:0 0 16px; color:#222222; font-size:15px; line-height:1.6;">Hello ${escapeHtml(input.contactName)},</p>
+      <p style="margin:0 0 16px; color:#222222; font-size:15px; line-height:1.6;">We received your request for access to KSE Suppliers.</p>
+      <p style="margin:0 0 16px; color:#222222; font-size:15px; line-height:1.6;">Our team will review your information and contact you after approval.</p>
+      <p style="margin:0 0 24px; color:#222222; font-size:15px; line-height:1.6;">Submitting this request does not create or activate an account immediately.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+        <tr>
+          <td colspan="2" style="padding:0 0 10px; color:#951828; font-size:16px; line-height:1.4; font-weight:700;">Request Details</td>
+        </tr>
+        <tr>
+          <td style="width:34%; padding:11px 12px 11px 0; border-bottom:1px solid #e5e7eb; color:#4b5563; font-size:13px; line-height:1.4; font-weight:700; vertical-align:top;">Business</td>
+          <td style="padding:11px 0; border-bottom:1px solid #e5e7eb; color:#111827; font-size:14px; line-height:1.4; vertical-align:top;">${escapeHtml(input.businessName)}</td>
+        </tr>
+        <tr>
+          <td style="width:34%; padding:11px 12px 11px 0; color:#4b5563; font-size:13px; line-height:1.4; font-weight:700; vertical-align:top;">Comments</td>
+          <td style="padding:11px 0; color:#111827; font-size:14px; line-height:1.4; vertical-align:top;">${escapeHtml(input.comments || 'None provided')}</td>
+        </tr>
+      </table>
+    `,
+  });
 
   return { subject, text, html };
 }
