@@ -95,6 +95,13 @@ describe('AppService shipping quote emails', () => {
     expect(customerMessage.html).toContain('Blue &lt;Widget&gt;');
     expect(customerMessage.html).toContain('x2');
     expect(customerMessage.html).toContain('42.50 USD');
+    expect(customerMessage.html).toContain('KSE SUPPLIERS');
+    expect(customerMessage.html).toContain('Item');
+    expect(customerMessage.html).toContain('Qty');
+    expect(customerMessage.html).toContain('Unit price');
+    expect(customerMessage.html).toContain('Total');
+    expect(customerMessage.html).toContain('text-align:right');
+    expect(customerMessage.html).toContain('Order subtotal');
     expect(customerMessage.html).toContain(
       'No payment or further action is required until the shipping quote has been prepared.',
     );
@@ -128,7 +135,8 @@ describe('AppService shipping quote emails', () => {
       expect(html).toContain('27.99 USD each');
       expect(html).toContain('27.99 USD total');
       expect(html).not.toContain('499.99 USD each');
-      expect(html).toContain('Order subtotal: 27.99 USD');
+      expect(html).toContain('Order subtotal');
+      expect(html).toContain('27.99 USD');
       expect(text).toContain('27.99 USD each');
       expect(text).toContain('27.99 USD total');
       expect(text).toContain('Order subtotal: 27.99 USD');
@@ -152,6 +160,9 @@ describe('AppService shipping quote emails', () => {
       }),
     );
     expect(internalMessage).not.toHaveProperty('replyTo');
+    expect(internalMessage.html).toContain('KSE SUPPLIERS');
+    expect(internalMessage.html).toContain('Shipping Quote Request');
+    expect(internalMessage.html).toContain('View Draft Order');
     expect(internalMessage.html).toContain('customer-123');
     expect(internalMessage.html).toContain('Ada Lovelace');
     expect(internalMessage.html).toContain('customer@example.com');

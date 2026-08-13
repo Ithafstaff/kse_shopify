@@ -61,13 +61,23 @@ describe('AccountRequestService', () => {
         from: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
         to: 'gerald.latagan@gmail.com',
         replyTo: 'cs@ksesuppliers.com',
-        subject: 'We received your KSE account request',
+        subject: 'We Received Your KSE Account Request',
       }),
     );
-    expect(sendMessage.mock.calls[0][0].subject).toContain(
-      'Gerald Linen Supply',
+    expect(sendMessage.mock.calls[0][0].subject).toMatch(
+      /^New Website Account Request - Gerald Linen Supply - KSE-[0-9A-F]{8}$/,
     );
-    expect(sendMessage.mock.calls[0][0].subject).toContain(result.requestId);
+
+    const internalMessage = sendMessage.mock.calls[0][0];
+    const customerMessage = sendMessage.mock.calls[1][0];
+    expect(internalMessage.html).toContain('KSE SUPPLIERS');
+    expect(internalMessage.html).toContain('New Website Account Request');
+    expect(internalMessage.html).toContain('Request ID');
+    expect(customerMessage.html).toContain('KSE SUPPLIERS');
+    expect(customerMessage.html).toContain('We Received Your KSE Account Request');
+    expect(customerMessage.html).not.toContain('Request ID');
+    expect(customerMessage.text).not.toContain('Request ID');
+    expect(internalMessage.subject).toContain(result.requestId);
   });
 
   it('accepts buyer requests and normalizes whitespace', async () => {

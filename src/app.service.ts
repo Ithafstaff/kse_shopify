@@ -18,6 +18,7 @@ import { CustomerCompany } from './dto/customer-company.dto';
 import { skip } from 'rxjs';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { ResendMailService } from './email/resend-mail.service';
+import { buildKseEmailLayout } from './email/kse-email-layout';
 
 type AppProxyQuery = Record<string, string | string[] | undefined>;
 
@@ -4164,19 +4165,28 @@ export class AppService {
       .map(({ item, quantity, unitPrice, lineTotal }) => {
         return `
           <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;">${this.escapeHtml(item.title)}</td>
-            <td style="padding: 8px; border: 1px solid #ddd;">x${quantity}</td>
-            <td style="padding: 8px; border: 1px solid #ddd;">${unitPrice.toFixed(2)} ${currency} each</td>
-            <td style="padding: 8px; border: 1px solid #ddd;">${lineTotal.toFixed(2)} ${currency} total</td>
+            <td style="padding:10px 12px; border:1px solid #e5e7eb; color:#111827; font-size:13px; line-height:1.4; word-break:break-word;">${this.escapeHtml(item.title)}</td>
+            <td style="padding:10px 12px; border:1px solid #e5e7eb; color:#111827; font-size:13px; line-height:1.4; text-align:center; white-space:nowrap;">x${quantity}</td>
+            <td style="padding:10px 12px; border:1px solid #e5e7eb; color:#111827; font-size:13px; line-height:1.4; text-align:right; white-space:nowrap;">${unitPrice.toFixed(2)} ${currency} each</td>
+            <td style="padding:10px 12px; border:1px solid #e5e7eb; color:#111827; font-size:13px; line-height:1.4; text-align:right; white-space:nowrap;">${lineTotal.toFixed(2)} ${currency} total</td>
           </tr>
         `;
       })
       .join('');
+    const productTableHeader = `
+      <tr>
+        <th align="left" style="padding:10px 12px; border:1px solid #d1d5db; background-color:#f3f4f6; color:#374151; font-size:12px; line-height:1.4; font-weight:700;">Item</th>
+        <th align="center" style="padding:10px 12px; border:1px solid #d1d5db; background-color:#f3f4f6; color:#374151; font-size:12px; line-height:1.4; font-weight:700;">Qty</th>
+        <th align="right" style="padding:10px 12px; border:1px solid #d1d5db; background-color:#f3f4f6; color:#374151; font-size:12px; line-height:1.4; font-weight:700;">Unit price</th>
+        <th align="right" style="padding:10px 12px; border:1px solid #d1d5db; background-color:#f3f4f6; color:#374151; font-size:12px; line-height:1.4; font-weight:700;">Total</th>
+      </tr>
+    `;
     const productText = pricedLineItems
       .map(({ item, quantity, unitPrice, lineTotal }) => {
         return `${item.title} x${quantity} - ${unitPrice.toFixed(2)} ${currency} each - ${lineTotal.toFixed(2)} ${currency} total`;
       })
       .join('\n');
+    const draftOrderUrl = `https://admin.shopify.com/store/kse-suppliers/draft_orders/${encodeURIComponent(numericDraftOrderId)}`;
 
     const customerMailOptions = {
       from,
@@ -4191,22 +4201,31 @@ export class AppService {
         `Order subtotal: ${subtotal} ${currency}`,
         'No payment or further action is required until the shipping quote has been prepared.',
       ].join('\n\n'),
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #f9f9f9;">
-          <h2 style="color: #951828;">Shipping Quote Request Received</h2>
-          <p>Hi ${this.escapeHtml(customer.first_name || shippingAddress.firstName)},</p>
-          <p>We've received your request for a shipping quote for order <strong>${orderNumber}</strong>.</p>
-          <p>Our team will review the shipping details and update your order with the shipping cost. We'll contact you once the quote is ready.</p>
-          <h3>Shipping address</h3>
-          <p>${addressHtml}</p>
-          <h3>Order summary</h3>
-          <table style="width: 100%; border-collapse: collapse;"><tbody>${productRows}</tbody></table>
-          <p style="text-align: right;"><strong>Order subtotal: ${subtotal} ${currency}</strong></p>
-          <p>No payment or further action is required until the shipping quote has been prepared.</p>
-          <p>If you have questions, please contact our customer service team.</p>
-          <p>Thank you,<br><strong>KSE Supplies</strong></p>
-        </div>
-      `,
+      html: buildKseEmailLayout({
+        title: 'Shipping Quote Request Received',
+        preheader: `Shipping Quote Request Received - Order ${orderNumber}`,
+        body: `
+          <p style="margin:0 0 16px; color:#222222; font-size:15px; line-height:1.6;">Hi ${this.escapeHtml(customer.first_name || shippingAddress.firstName)},</p>
+          <p style="margin:0 0 16px; color:#222222; font-size:15px; line-height:1.6;">We've received your request for a shipping quote for order <strong>${orderNumber}</strong>.</p>
+          <p style="margin:0 0 24px; color:#222222; font-size:15px; line-height:1.6;">Our team will review the shipping details and update your order with the shipping cost. We'll contact you once the quote is ready.</p>
+          <h2 style="margin:0 0 10px; color:#951828; font-size:16px; line-height:1.4; font-weight:700;">Shipping Address</h2>
+          <div style="margin:0 0 24px; padding:14px 16px; border:1px solid #e5e7eb; background-color:#f9fafb; color:#374151; font-size:14px; line-height:1.6;">${addressHtml}</div>
+          <h2 style="margin:0 0 10px; color:#951828; font-size:16px; line-height:1.4; font-weight:700;">Order Summary</h2>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+            <thead>${productTableHeader}</thead>
+            <tbody>${productRows}</tbody>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; margin:12px 0 24px; border-collapse:collapse;">
+            <tr>
+              <td style="padding:12px; background-color:#f9fafb; color:#111827; font-size:14px; line-height:1.4; font-weight:700;">Order subtotal</td>
+              <td style="padding:12px; background-color:#f9fafb; color:#111827; font-size:14px; line-height:1.4; font-weight:700; text-align:right; white-space:nowrap;">${subtotal} ${currency}</td>
+            </tr>
+          </table>
+          <p style="margin:0 0 16px; color:#222222; font-size:15px; line-height:1.6;">No payment or further action is required until the shipping quote has been prepared.</p>
+          <p style="margin:0 0 16px; color:#222222; font-size:15px; line-height:1.6;">If you have questions, please contact our customer service team.</p>
+          <p style="margin:0; color:#222222; font-size:15px; line-height:1.6;">Thank you,<br><strong>KSE Supplies</strong></p>
+        `,
+      }),
     };
     const internalMailOptions = {
       from,
@@ -4221,23 +4240,32 @@ export class AppService {
         `Shipping address:\n${addressText}`,
         `Order details:\n${productText}`,
         `Order subtotal: ${subtotal} ${currency}`,
-        `View Draft Order: https://admin.shopify.com/store/kse-suppliers/draft_orders/${encodeURIComponent(numericDraftOrderId)}`,
+        `View Draft Order: ${draftOrderUrl}`,
       ].join('\n\n'),
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; background-color: #f9f9f9;">
-          <h2 style="color: #951828;">Shipping Quote Request</h2>
-          <p><strong>User ID:</strong> ${this.escapeHtml(userId)}</p>
-          <p><strong>Customer:</strong> ${this.escapeHtml(customer.first_name)} ${this.escapeHtml(customer.last_name)} (${this.escapeHtml(customerEmail)})</p>
-          <p><strong>Company:</strong> ${this.escapeHtml(shippingAddress.company || 'N/A')}</p>
-          <p><strong>PO Number:</strong> ${this.escapeHtml(poNumber)}</p>
-          <h3>Shipping address</h3>
-          <p>${addressHtml}</p>
-          <h3>Order details</h3>
-          <table style="width: 100%; border-collapse: collapse;"><tbody>${productRows}</tbody></table>
-          <p style="text-align: right;"><strong>Order subtotal: ${subtotal} ${currency}</strong></p>
-          <p><a href="https://admin.shopify.com/store/kse-suppliers/draft_orders/${encodeURIComponent(numericDraftOrderId)}">View Draft Order</a></p>
-        </div>
-      `,
+      html: buildKseEmailLayout({
+        title: 'Shipping Quote Request',
+        preheader: `Shipping Quote Request - Order ${orderNumber}`,
+        body: `
+          <p style="margin:0 0 12px; color:#222222; font-size:14px; line-height:1.5;"><strong>User ID:</strong> ${this.escapeHtml(userId)}</p>
+          <p style="margin:0 0 12px; color:#222222; font-size:14px; line-height:1.5;"><strong>Customer:</strong> ${this.escapeHtml(customer.first_name)} ${this.escapeHtml(customer.last_name)} (${this.escapeHtml(customerEmail)})</p>
+          <p style="margin:0 0 12px; color:#222222; font-size:14px; line-height:1.5;"><strong>Company:</strong> ${this.escapeHtml(shippingAddress.company || 'N/A')}</p>
+          <p style="margin:0 0 24px; color:#222222; font-size:14px; line-height:1.5;"><strong>PO Number:</strong> ${this.escapeHtml(poNumber)}</p>
+          <h2 style="margin:0 0 10px; color:#951828; font-size:16px; line-height:1.4; font-weight:700;">Shipping Address</h2>
+          <div style="margin:0 0 24px; padding:14px 16px; border:1px solid #e5e7eb; background-color:#f9fafb; color:#374151; font-size:14px; line-height:1.6;">${addressHtml}</div>
+          <h2 style="margin:0 0 10px; color:#951828; font-size:16px; line-height:1.4; font-weight:700;">Order Details</h2>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; border-collapse:collapse;">
+            <thead>${productTableHeader}</thead>
+            <tbody>${productRows}</tbody>
+          </table>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%; margin:12px 0 24px; border-collapse:collapse;">
+            <tr>
+              <td style="padding:12px; background-color:#f9fafb; color:#111827; font-size:14px; line-height:1.4; font-weight:700;">Order subtotal</td>
+              <td style="padding:12px; background-color:#f9fafb; color:#111827; font-size:14px; line-height:1.4; font-weight:700; text-align:right; white-space:nowrap;">${subtotal} ${currency}</td>
+            </tr>
+          </table>
+          <p style="margin:0;"><a href="${draftOrderUrl}" style="display:inline-block; padding:12px 18px; border-radius:4px; background-color:#951828; color:#ffffff; font-size:14px; line-height:1.2; font-weight:700; text-decoration:none;">View Draft Order</a></p>
+        `,
+      }),
     };
 
     try {
