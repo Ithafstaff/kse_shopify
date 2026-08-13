@@ -782,6 +782,42 @@ describe('AppService order pagination', () => {
       expect(axiosRequest(1).data.variables.after).toBe('cursor-1');
     });
 
+    it('does not advertise another Personal page when later Shopify edges do not match', async () => {
+      mockedAxios
+        .mockResolvedValueOnce(
+          shopifyPage(
+            [
+              orderEdge('1', 'cursor-1', ['Placed'], '0.00', null, {
+                customer: { id: 'gid://shopify/Customer/2' },
+              }),
+            ],
+            true,
+          ),
+        )
+        .mockResolvedValueOnce(
+          shopifyPage([
+            orderEdge('2', 'cursor-2', ['Placed'], '0.00', null, {
+              customer: { id: 'gid://shopify/Customer/2' },
+            }),
+          ]),
+        );
+
+      await expect(
+        service.getCombinedDraftOrdersPage(
+          'gid://shopify/Customer/1',
+          'Acme',
+          10,
+          undefined,
+          undefined,
+          'Personal',
+        ),
+      ).resolves.toMatchObject({
+        orders: [],
+        pageInfo: { hasNextPage: false, endCursor: null },
+      });
+      expect(mockedAxios).toHaveBeenCalledTimes(2);
+    });
+
     it('fills scoped pages by scanning past non-matching orders', async () => {
       mockedAxios
         .mockResolvedValueOnce(

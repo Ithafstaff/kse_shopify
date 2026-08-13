@@ -3967,6 +3967,7 @@ export class AppService {
             endCursor
           }
           edges {
+            cursor
             node {
               id
               name
@@ -4004,78 +4005,127 @@ export class AppService {
     `;
 
     try {
-      const response = await axios({
-        url: this.shopifyApiUrl,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Shopify-Access-Token': this.shopifyAccessToken,
-        },
-        data: {
-          query,
-          variables: {
-            first: pageSize,
-            after: after || null,
-            searchQuery: `customer_id:${numericCustomerId} tag:Placed`,
+      let shopifyAfter = after || null;
+      let lastConsumedEdgeCursor = shopifyAfter;
+      let hasMoreOrders = false;
+      let scanning = true;
+      const orders: DraftOrder[] = [];
+      const seenCursors = new Set<string>();
+
+      while (scanning) {
+        const response = await axios({
+          url: this.shopifyApiUrl,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': this.shopifyAccessToken,
           },
-        },
-      });
+          data: {
+            query,
+            variables: {
+              first: pageSize,
+              after: shopifyAfter,
+              searchQuery: `customer_id:${numericCustomerId} tag:Placed`,
+            },
+          },
+        });
 
-      if (response.data.errors?.length) {
-        throw new Error(
-          response.data.errors
-            .map((error: { message: string }) => error.message)
-            .join('; '),
-        );
-      }
+        if (response.data.errors?.length) {
+          throw new Error(
+            response.data.errors
+              .map((error: { message: string }) => error.message)
+              .join('; '),
+          );
+        }
 
-      const connection = response.data.data?.draftOrders;
+        const connection = response.data.data?.draftOrders;
 
-      if (!connection?.edges || !connection?.pageInfo) {
-        throw new Error(
-          'Personal draft-order page not found in the API response.',
-        );
-      }
+        if (!connection?.edges || !connection?.pageInfo) {
+          throw new Error(
+            'Personal draft-order page not found in the API response.',
+          );
+        }
 
-      const orders = connection.edges
-        .map((edge) => edge.node)
-        .filter(
-          (order) =>
+        for (let index = 0; index < connection.edges.length; index += 1) {
+          const edge = connection.edges[index];
+
+          if (!edge.cursor || seenCursors.has(edge.cursor)) {
+            throw new Error('Shopify returned an invalid draft-order cursor.');
+          }
+
+          seenCursors.add(edge.cursor);
+          const order = edge.node;
+          const isMatchingOrder =
             order.order?.id &&
             order.customer?.id === `gid://shopify/Customer/${numericCustomerId}` &&
-            this.orderMatchesSearch(order, search),
-        )
-        .map((order) => ({
-          id: order.id,
-          name: order.name,
-          createdAt: order.createdAt,
-          note: order.note2 || null,
-          customer: order.customer
-            ? {
-              id: order.customer.id,
-              firstName: order.customer.firstName || null,
-              lastName: order.customer.lastName || null,
-              email: order.customer.email || null,
-            }
-            : null,
-          orderType: 'Personal',
-          tags: order.tags || [],
-          shippingAddress: order.shippingAddress || null,
-          shippingLine: order.shippingLine
-            ? {
-              title: order.shippingLine.title,
-              price: Number(order.shippingLine.price) || 0,
-            }
-            : null,
-          totalPrice: Number(order.totalPriceSet?.shopMoney?.amount) || 0,
-          lineItems: [],
-        }));
+            this.orderMatchesSearch(order, search);
+
+          if (!isMatchingOrder) continue;
+
+          if (orders.length === pageSize) {
+            hasMoreOrders = true;
+            scanning = false;
+            break;
+          }
+
+          orders.push({
+            id: order.id,
+            name: order.name,
+            createdAt: order.createdAt,
+            note: order.note2 || null,
+            customer: order.customer
+              ? {
+                id: order.customer.id,
+                firstName: order.customer.firstName || null,
+                lastName: order.customer.lastName || null,
+                email: order.customer.email || null,
+              }
+              : null,
+            orderType: 'Personal',
+            tags: order.tags || [],
+            shippingAddress: order.shippingAddress || null,
+            shippingLine: order.shippingLine
+              ? {
+                title: order.shippingLine.title,
+                price: Number(order.shippingLine.price) || 0,
+              }
+              : null,
+            totalPrice: Number(order.totalPriceSet?.shopMoney?.amount) || 0,
+            lineItems: [],
+          });
+          lastConsumedEdgeCursor = edge.cursor;
+        }
+
+        if (!scanning) break;
+
+        if (orders.length === pageSize) {
+          hasMoreOrders = connection.pageInfo.hasNextPage;
+          break;
+        }
+
+        if (!connection.pageInfo.hasNextPage) {
+          hasMoreOrders = false;
+          break;
+        }
+
+        const endCursor = connection.pageInfo.endCursor;
+        if (!endCursor || endCursor === shopifyAfter) {
+          throw new Error(
+            'Shopify reported another draft-order page without a new cursor.',
+          );
+        }
+
+        shopifyAfter = endCursor;
+      }
 
       return {
         orders,
         pageInfo: {
-          hasNextPage: connection.pageInfo.hasNextPage,
-          endCursor: connection.pageInfo.endCursor || null,
+          hasNextPage: hasMoreOrders,
+          endCursor:
+            hasMoreOrders && lastConsumedEdgeCursor
+              ? lastConsumedEdgeCursor
+              : null,
         },
       };
     } catch (error) {
