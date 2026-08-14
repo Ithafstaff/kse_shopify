@@ -34,6 +34,9 @@ type CustomerAccountUpdateInput = {
 
 @Injectable()
 export class AppService {
+  private readonly appProxyExpectedShopDomain =
+    'kse-suppliers.myshopify.com';
+  private readonly appProxyMaxAgeSeconds = 300;
   private readonly shopifyApiUrl: string;
   private readonly shopifyRestUrl2: string;
   private readonly shopifyAccessToken: string;
@@ -392,6 +395,37 @@ export class AppService {
     }
   }
 
+  private appProxyQueryValue(
+    query: AppProxyQuery,
+    key: string,
+  ): string | undefined {
+    const value = query?.[key];
+    return Array.isArray(value) ? value[0] : value;
+  }
+
+  private assertAppProxyRequestContext(query: AppProxyQuery): void {
+    const shop = this.appProxyQueryValue(query, 'shop');
+    const timestampValue = this.appProxyQueryValue(query, 'timestamp');
+
+    if (
+      shop !== this.appProxyExpectedShopDomain ||
+      !timestampValue ||
+      !/^\d+$/.test(timestampValue)
+    ) {
+      throw new Error('Customer account identity could not be verified.');
+    }
+
+    const timestamp = Number(timestampValue);
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+
+    if (
+      !Number.isSafeInteger(timestamp) ||
+      Math.abs(currentTimestamp - timestamp) > this.appProxyMaxAgeSeconds
+    ) {
+      throw new Error('Customer account identity could not be verified.');
+    }
+  }
+
   private assertAppProxyCustomerMatches(
     customerId: string,
     query: AppProxyQuery,
@@ -400,10 +434,12 @@ export class AppService {
       throw new Error('Customer account identity could not be verified.');
     }
 
-    const loggedInCustomerIdValue = query?.logged_in_customer_id;
-    const loggedInCustomerId = Array.isArray(loggedInCustomerIdValue)
-      ? loggedInCustomerIdValue[0]
-      : loggedInCustomerIdValue;
+    this.assertAppProxyRequestContext(query);
+
+    const loggedInCustomerId = this.appProxyQueryValue(
+      query,
+      'logged_in_customer_id',
+    );
 
     const canonicalCustomerId = this.canonicalizeCustomerId(customerId);
     const canonicalLoggedInCustomerId =
@@ -740,23 +776,22 @@ export class AppService {
     this.assertCustomerAccountStorefrontConfigured();
 
     const trimmedEmail = email?.trim();
-    const trimmedCurrentPassword = currentPassword?.trim();
+    const exactCurrentPassword = currentPassword;
     const trimmedFirstName = firstName?.trim();
     const trimmedLastName = lastName?.trim();
     const trimmedCompany = company?.trim() || '';
-    const trimmedNewPassword =
-      newPassword === undefined ? undefined : newPassword.trim();
+    const exactNewPassword = newPassword;
 
     if (
       !trimmedEmail ||
-      !trimmedCurrentPassword ||
+      !exactCurrentPassword?.trim() ||
       !trimmedFirstName ||
       !trimmedLastName
     ) {
       throw new Error('Unable to save account details.');
     }
 
-    if (newPassword !== undefined && !trimmedNewPassword) {
+    if (exactNewPassword !== undefined && !exactNewPassword.trim()) {
       throw new Error('Unable to save account details.');
     }
 
@@ -786,7 +821,7 @@ export class AppService {
         {
           input: {
             email: trimmedEmail,
-            password: trimmedCurrentPassword,
+            password: exactCurrentPassword,
           },
         },
       );
@@ -844,8 +879,8 @@ export class AppService {
         lastName: trimmedLastName,
       };
 
-      if (trimmedNewPassword) {
-        customerUpdateInput.password = newPassword;
+      if (exactNewPassword !== undefined) {
+        customerUpdateInput.password = exactNewPassword;
       }
 
       const updateData = await this.storefrontRequest<{
@@ -907,9 +942,21 @@ export class AppService {
     const trimmedFirstName = input.firstName?.trim();
     const trimmedLastName = input.lastName?.trim();
     const trimmedCompany = input.company?.trim() || '';
-    const hasPasswordChange = Boolean(input.newPassword?.trim());
+    const hasAnyPasswordField =
+      input.email !== undefined ||
+      input.currentPassword !== undefined ||
+      input.newPassword !== undefined;
+    const hasPasswordChange = Boolean(
+      input.email?.trim() &&
+      input.currentPassword?.trim() &&
+      input.newPassword?.trim(),
+    );
 
     if (!trimmedFirstName || !trimmedLastName) {
+      throw new Error('Unable to save account details.');
+    }
+
+    if (hasAnyPasswordField && !hasPasswordChange) {
       throw new Error('Unable to save account details.');
     }
 

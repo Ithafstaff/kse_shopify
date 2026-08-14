@@ -1,4 +1,8 @@
-import { UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AppProxyAccountController } from './app-proxy-account.controller';
 import { AppService } from './app.service';
 
@@ -65,5 +69,49 @@ describe('AppProxyAccountController', () => {
         { signature: 'bad' },
       ),
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it.each([
+    'Invalid current password or account credentials.',
+    'Unable to save account details.',
+  ])('returns bad request for a safe account input error: %s', async (message) => {
+    appService.updateCustomerAccountFromAppProxy.mockRejectedValue(
+      new Error(message),
+    );
+
+    await expect(
+      controller.updateCustomerAccount(
+        {
+          customerId: 'gid://shopify/Customer/123',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          company: 'Analytical Engine',
+        },
+        { signature: 'signed' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('returns a generic internal error for unexpected backend failures', async () => {
+    appService.updateCustomerAccountFromAppProxy.mockRejectedValue(
+      new Error('Shopify access token leaked into an upstream error.'),
+    );
+
+    await expect(
+      controller.updateCustomerAccount(
+        {
+          customerId: 'gid://shopify/Customer/123',
+          firstName: 'Ada',
+          lastName: 'Lovelace',
+          company: 'Analytical Engine',
+        },
+        { signature: 'signed' },
+      ),
+    ).rejects.toMatchObject({
+      constructor: InternalServerErrorException,
+      response: {
+        message: 'Unable to save account details.',
+      },
+    });
   });
 });

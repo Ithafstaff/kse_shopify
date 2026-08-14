@@ -61,6 +61,10 @@ function signedAppProxyQuery(
   };
 }
 
+function currentAppProxyTimestamp(offsetSeconds = 0): string {
+  return String(Math.floor(Date.now() / 1000) + offsetSeconds);
+}
+
 function orderEdge(
   id: string,
   cursor: string,
@@ -1799,7 +1803,7 @@ describe('AppService customer account updates', () => {
     },
   );
 
-  it('trims current password for Storefront auth while preserving exact new password', async () => {
+  it('preserves current and new passwords exactly for Storefront auth', async () => {
     mockedAxios
       .mockResolvedValueOnce({
         data: {
@@ -1855,7 +1859,7 @@ describe('AppService customer account updates', () => {
     expect(axiosConfig(0).data.variables).toEqual({
       input: {
         email: 'ada@example.com',
-        password: 'current-password',
+        password: '  current-password  ',
       },
     });
     expect(axiosConfig(2).data.variables).toEqual({
@@ -2024,7 +2028,7 @@ describe('AppService customer account updates', () => {
           logged_in_customer_id: '123',
           path_prefix: '/apps/kse-account',
           shop: 'kse-suppliers.myshopify.com',
-          timestamp: '1786120000',
+          timestamp: currentAppProxyTimestamp(),
         }),
       ),
     ).resolves.toEqual(companyResult);
@@ -2057,7 +2061,7 @@ describe('AppService customer account updates', () => {
           logged_in_customer_id: '123',
           path_prefix: '/apps/kse-account',
           shop: 'kse-suppliers.myshopify.com',
-          timestamp: '1786120000',
+          timestamp: currentAppProxyTimestamp(),
           signature: 'bad-signature',
         },
       ),
@@ -2083,7 +2087,7 @@ describe('AppService customer account updates', () => {
           logged_in_customer_id: '999',
           path_prefix: '/apps/kse-account',
           shop: 'kse-suppliers.myshopify.com',
-          timestamp: '1786120000',
+          timestamp: currentAppProxyTimestamp(),
         }),
       ),
     ).rejects.toThrow('Customer account identity could not be verified.');
@@ -2119,7 +2123,7 @@ describe('AppService customer account updates', () => {
           logged_in_customer_id: '123',
           path_prefix: '/apps/kse-account',
           shop: 'kse-suppliers.myshopify.com',
-          timestamp: '1786120000',
+          timestamp: currentAppProxyTimestamp(),
         }),
       ),
     ).resolves.toEqual(companyResult);
@@ -2134,6 +2138,94 @@ describe('AppService customer account updates', () => {
       'new-password',
     );
   });
+
+  it.each([
+    ['email only', { email: 'ada@example.com' }],
+    ['current password only', { currentPassword: 'current-password' }],
+    ['new password only', { newPassword: 'new-password' }],
+    [
+      'missing current password',
+      { email: 'ada@example.com', newPassword: 'new-password' },
+    ],
+  ])(
+    'rejects an incomplete app proxy password payload: %s',
+    async (_case, passwordFields) => {
+      const updateCustomerProfileSpy = jest.spyOn(
+        service,
+        'updateCustomerProfile',
+      );
+      const updateCustomerCompanySpy = jest.spyOn(
+        service,
+        'updateCustomerCompany',
+      );
+
+      await expect(
+        service.updateCustomerAccountFromAppProxy(
+          {
+            customerId: 'gid://shopify/Customer/123',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            company: 'Analytical Engine',
+            ...passwordFields,
+          },
+          signedAppProxyQuery({
+            logged_in_customer_id: '123',
+            path_prefix: '/apps/kse-account',
+            shop: 'kse-suppliers.myshopify.com',
+            timestamp: currentAppProxyTimestamp(),
+          }),
+        ),
+      ).rejects.toThrow('Unable to save account details.');
+
+      expect(updateCustomerProfileSpy).not.toHaveBeenCalled();
+      expect(updateCustomerCompanySpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['a guest request', '', currentAppProxyTimestamp()],
+    ['the wrong shop', '123', currentAppProxyTimestamp(), 'other-shop.myshopify.com'],
+    ['a malformed timestamp', '123', 'not-a-timestamp'],
+    ['an expired timestamp', '123', currentAppProxyTimestamp(-600)],
+    ['a timestamp too far in the future', '123', currentAppProxyTimestamp(600)],
+  ])(
+    'rejects %s before writing customer data',
+    async (
+      _case,
+      loggedInCustomerId,
+      timestamp,
+      shop = 'kse-suppliers.myshopify.com',
+    ) => {
+      const updateCustomerProfileSpy = jest.spyOn(
+        service,
+        'updateCustomerProfile',
+      );
+      const updateCustomerCompanySpy = jest.spyOn(
+        service,
+        'updateCustomerCompany',
+      );
+
+      await expect(
+        service.updateCustomerAccountFromAppProxy(
+          {
+            customerId: 'gid://shopify/Customer/123',
+            firstName: 'Ada',
+            lastName: 'Lovelace',
+            company: 'Analytical Engine',
+          },
+          signedAppProxyQuery({
+            logged_in_customer_id: loggedInCustomerId,
+            path_prefix: '/apps/kse-account',
+            shop,
+            timestamp,
+          }),
+        ),
+      ).rejects.toThrow('Customer account identity could not be verified.');
+
+      expect(updateCustomerProfileSpy).not.toHaveBeenCalled();
+      expect(updateCustomerCompanySpy).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('AppService shipping address validation', () => {
