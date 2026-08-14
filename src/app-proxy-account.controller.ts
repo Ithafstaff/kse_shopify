@@ -1,6 +1,8 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  InternalServerErrorException,
   Post,
   Query,
   UnauthorizedException,
@@ -45,7 +47,16 @@ export class AppProxyAccountController {
         throw new UnauthorizedException(message);
       }
 
-      throw error;
+      if (
+        message === 'Invalid current password or account credentials.' ||
+        message === 'Unable to save account details.'
+      ) {
+        throw new BadRequestException(message);
+      }
+
+      throw new InternalServerErrorException(
+        'Unable to save account details.',
+      );
     }
   }
 }
