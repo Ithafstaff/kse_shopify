@@ -1603,6 +1603,19 @@ export class AppService {
                   }`
                 : ''
               }
+                ${item.properties?.length
+                ? `customAttributes: [
+                    ${item.properties
+                    .map(
+                      (property) => `{
+                        key: "${this.escapeGraphQLString(property.key)}",
+                        value: "${this.escapeGraphQLString(property.value)}"
+                      }`,
+                    )
+                    .join(',')}
+                  ]`
+                : ''
+              }
                 title: "${this.escapeGraphQLString(item.title || '')}"
               }
             `,

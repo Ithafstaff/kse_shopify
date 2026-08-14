@@ -189,6 +189,58 @@ function customerEdge(id: string, cursor: string) {
   };
 }
 
+describe('AppService draft order creation', () => {
+  let service: AppService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new AppService(configService(), resendMailService());
+  });
+
+  it('passes supplier line-item properties to Shopify as custom attributes', async () => {
+    mockedAxios.mockResolvedValueOnce({
+      data: {
+        data: {
+          draftOrderCreate: {
+            draftOrder: { id: 'gid://shopify/DraftOrder/42' },
+            userErrors: [],
+          },
+        },
+      },
+    });
+
+    await service.createDraftOrder(
+      'gid://shopify/Customer/7',
+      [
+        {
+          variantId: 'gid://shopify/ProductVariant/11',
+          quantity: 2,
+          originalPrice: 1200,
+          originalUnitPrice: 1200,
+          properties: [
+            { key: '_kse_size', value: 'Twin XL' },
+            { key: '_kse_color', value: 'Navy "Blue"' },
+          ],
+        },
+      ],
+      {
+        address1: '1 Main Street',
+        city: 'Albany',
+        province: 'NY',
+        country: 'United States',
+        zip: '12207',
+      },
+      [],
+      '',
+      '',
+    );
+
+    expect(axiosRequest(0).data.query).toMatch(
+      /customAttributes:\s*\[\s*\{\s*key:\s*"_kse_size",\s*value:\s*"Twin XL"\s*\}\s*,\s*\{\s*key:\s*"_kse_color",\s*value:\s*"Navy \\"Blue\\""\s*\}\s*\]/,
+    );
+  });
+});
+
 describe('AppService draft order address persistence', () => {
   let service: AppService;
   const mockedAxiosPost = jest.mocked(axios.post);
