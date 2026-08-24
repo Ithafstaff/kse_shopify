@@ -13,7 +13,7 @@
 - Use `https://api.resend.com/emails` over HTTPS; do not add the Resend SDK dependency.
 - Read `RESEND_API_KEY`, `EMAIL_FROM`, and `EMAIL_REPLY_TO` through `ConfigService`.
 - Use `EMAIL_FROM=KSE Suppliers <orders@notifications.ksesuppliers.com>` for every migrated message.
-- Use `ACCOUNT_REQUEST_RECIPIENT=it@hafstaff.com` for the controlled test recipient.
+- Use `ACCOUNT_REQUEST_RECIPIENT=orders@ksesuppliers.com` for the account-request recipient.
 - Keep the existing account-request feature flag and controlled applicant allowlist.
 - Send two separate messages per workflow; do not combine customer and internal content.
 - Preserve shipping-quote concurrent sending and failure propagation.
@@ -194,7 +194,7 @@ Update the test double type from `GmailMailService` to `ResendMailService` and r
 ```ts
 EMAIL_FROM: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
 EMAIL_REPLY_TO: 'cs@ksesuppliers.com',
-ACCOUNT_REQUEST_RECIPIENT: 'it@hafstaff.com',
+ACCOUNT_REQUEST_RECIPIENT: 'orders@ksesuppliers.com',
 ```
 
 Return `{ id: 'resend-message-id' }` from the mocked `sendMessage` method. Update the successful-send assertions to expect:
@@ -370,7 +370,7 @@ After local verification, tell the user to create a restricted Resend sending ke
 ```text
 EMAIL_FROM=KSE Suppliers <orders@notifications.ksesuppliers.com>
 EMAIL_REPLY_TO=cs@ksesuppliers.com
-ACCOUNT_REQUEST_RECIPIENT=it@hafstaff.com
+ACCOUNT_REQUEST_RECIPIENT=orders@ksesuppliers.com
 ```
 
 The user adds `RESEND_API_KEY` directly in Railway. The agent must not receive or store it.

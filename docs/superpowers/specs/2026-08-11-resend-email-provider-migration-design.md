@@ -15,7 +15,7 @@ Use the verified Resend sending domain to deliver the two transactional emails r
    - A customer acknowledgment.
    - An internal account-request notification.
 
-The temporary internal recipient for account-request testing is `it@hafstaff.com`.
+The internal recipient for account requests is `orders@ksesuppliers.com`.
 
 ## Scope
 
@@ -75,9 +75,9 @@ From: KSE Suppliers <orders@notifications.ksesuppliers.com>
 | Shipping quote | Customer acknowledgment | Customer email | `cs@ksesuppliers.com` | Confirms that the shipping quote request was received and is being calculated. |
 | Shipping quote | Internal request | `orders@ksesuppliers.com` | None; preserve current behavior | Gives staff the order, customer, address, item, and subtotal details needed to prepare the quote. |
 | Account request | Customer acknowledgment | Applicant email | `cs@ksesuppliers.com` | Confirms review is pending and does not promise immediate account creation. |
-| Account request | Internal notification | `it@hafstaff.com` for testing | Applicant email | Tells the test recipient that a customer submitted an account request and allows a direct reply to that applicant. |
+| Account request | Internal notification | `orders@ksesuppliers.com` | Applicant email | Tells the internal order inbox that a customer submitted an account request and allows a direct reply to that applicant. |
 
-The account-request recipient is already configuration-driven through `ACCOUNT_REQUEST_RECIPIENT`, so it can later be changed from `it@hafstaff.com` without another code change. The shipping-quote internal recipient remains `orders@ksesuppliers.com` to preserve the existing behavior.
+The account-request recipient remains configuration-driven through `ACCOUNT_REQUEST_RECIPIENT`. Existing legacy values of `it@hafstaff.com` are redirected to `orders@ksesuppliers.com` by the backend. The shipping-quote internal recipient remains `orders@ksesuppliers.com` to preserve the existing behavior.
 
 ## Configuration and Secrets
 
@@ -87,7 +87,7 @@ The implementation will use these Railway values:
 RESEND_API_KEY=(created by the user after code verification and stored only in Railway)
 EMAIL_FROM=KSE Suppliers <orders@notifications.ksesuppliers.com>
 EMAIL_REPLY_TO=cs@ksesuppliers.com
-ACCOUNT_REQUEST_RECIPIENT=it@hafstaff.com
+ACCOUNT_REQUEST_RECIPIENT=orders@ksesuppliers.com
 ```
 
 The existing account-request feature flag and controlled applicant allowlist remain in place for testing. They must be deliberately changed before public production use.

@@ -18,6 +18,8 @@ const DISABLED_MESSAGE =
   'Account requests are not available right now. Please try again later.';
 const CUSTOMER_EMAIL_FAILURE_MESSAGE =
   'Your account request was received, but we could not send a confirmation email.';
+const DEFAULT_ACCOUNT_REQUEST_RECIPIENT = 'orders@ksesuppliers.com';
+const LEGACY_ACCOUNT_REQUEST_RECIPIENT = 'it@hafstaff.com';
 
 @Injectable()
 export class AccountRequestService {
@@ -61,9 +63,14 @@ export class AccountRequestService {
 
     const sender = this.configService.get<string>('EMAIL_FROM');
     const fallbackReplyTo = this.configService.get<string>('EMAIL_REPLY_TO');
-    const internalRecipient = this.configService.get<string>(
+    const configuredInternalRecipient = this.configService.get<string>(
       'ACCOUNT_REQUEST_RECIPIENT',
     );
+    const internalRecipient =
+      configuredInternalRecipient?.trim().toLowerCase() ===
+      LEGACY_ACCOUNT_REQUEST_RECIPIENT
+        ? DEFAULT_ACCOUNT_REQUEST_RECIPIENT
+        : configuredInternalRecipient;
 
     if (!sender || !internalRecipient) {
       console.error('Account request email configuration is incomplete.', {
