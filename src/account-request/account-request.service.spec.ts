@@ -52,7 +52,7 @@ describe('AccountRequestService', () => {
     expect(sendMessage.mock.calls[0][0]).toEqual(
       expect.objectContaining({
         from: 'KSE Suppliers <orders@notifications.ksesuppliers.com>',
-        to: 'it@hafstaff.com',
+        to: 'orders@ksesuppliers.com',
         replyTo: 'gerald.latagan@gmail.com',
       }),
     );
@@ -78,6 +78,12 @@ describe('AccountRequestService', () => {
     expect(customerMessage.html).not.toContain('Request ID');
     expect(customerMessage.text).not.toContain('Request ID');
     expect(internalMessage.subject).toContain(result.requestId);
+  });
+
+  it('routes legacy IT recipient configuration to the KSE orders inbox', async () => {
+    await service.requestAccount(baseInput);
+
+    expect(sendMessage.mock.calls[0][0].to).toBe('orders@ksesuppliers.com');
   });
 
   it('accepts buyer requests and normalizes whitespace', async () => {
@@ -228,7 +234,7 @@ describe('AccountRequestService', () => {
       requestId: expect.any(String),
     });
     expect(sendMessage).toHaveBeenCalledTimes(2);
-    expect(sendMessage.mock.calls[0][0].to).toBe('it@hafstaff.com');
+    expect(sendMessage.mock.calls[0][0].to).toBe('orders@ksesuppliers.com');
     expect(sendMessage.mock.calls[1][0].to).toBe('gerald.latagan@gmail.com');
   });
 });
