@@ -1585,16 +1585,13 @@ export class AppService {
         ? customerId
         : `gid://shopify/Customer/${customerId}`;
 
-      // 🟢 Extract email from note
-      let extractedEmail = 'fatima@ksesuppliers.com';
-      const emailMatch = note.match(/email:\s*([^\s,]+)/i);
-      if (emailMatch) {
-        extractedEmail = emailMatch[1].trim();
-      }
+      const emailMatch = note?.match(/email:\s*([^\s,]+)/i);
+      const extractedEmail = emailMatch?.[1]?.trim() || email?.trim() || '';
 
       // Escape values
       const safeNote = this.escapeGraphQLString(note);
       const safeEmail = this.escapeGraphQLString(extractedEmail);
+      const emailInput = extractedEmail ? `email: "${safeEmail}",` : '';
 
       const reformattedLineItems = lineItems.map((item) => {
         console.log(
@@ -1632,7 +1629,7 @@ export class AppService {
       mutation {
         draftOrderCreate(input: {
           customerId: "${formattedCustomerId}",
-          email: "${safeEmail}",
+          ${emailInput}
           note: "${safeNote}",
           lineItems: [
             ${reformattedLineItems

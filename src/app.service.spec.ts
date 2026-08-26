@@ -243,6 +243,81 @@ describe('AppService draft order creation', () => {
       /customAttributes:\s*\[\s*\{\s*key:\s*"_kse_size",\s*value:\s*"Twin XL"\s*\}\s*,\s*\{\s*key:\s*"_kse_color",\s*value:\s*"Navy \\"Blue\\""\s*\}\s*\]/,
     );
   });
+
+  it('does not assign a fallback recipient when no draft-order email is provided', async () => {
+    mockedAxios.mockResolvedValueOnce({
+      data: {
+        data: {
+          draftOrderCreate: {
+            draftOrder: { id: 'gid://shopify/DraftOrder/43' },
+            userErrors: [],
+          },
+        },
+      },
+    });
+
+    await service.createDraftOrder(
+      'gid://shopify/Customer/7',
+      [
+        {
+          variantId: 'gid://shopify/ProductVariant/11',
+          quantity: 1,
+          originalPrice: 1200,
+          originalUnitPrice: 1200,
+        },
+      ],
+      {
+        address1: '1 Main Street',
+        city: 'Albany',
+        province: 'NY',
+        country: 'United States',
+        zip: '12207',
+      },
+      [],
+      '',
+      '',
+    );
+
+    const query = axiosRequest(0).data.query;
+    expect(query).not.toMatch(/\bemail:\s*"/);
+  });
+
+  it('uses the supplied draft-order email when the note has no email', async () => {
+    mockedAxios.mockResolvedValueOnce({
+      data: {
+        data: {
+          draftOrderCreate: {
+            draftOrder: { id: 'gid://shopify/DraftOrder/44' },
+            userErrors: [],
+          },
+        },
+      },
+    });
+
+    await service.createDraftOrder(
+      'gid://shopify/Customer/7',
+      [
+        {
+          variantId: 'gid://shopify/ProductVariant/11',
+          quantity: 1,
+          originalPrice: 1200,
+          originalUnitPrice: 1200,
+        },
+      ],
+      {
+        address1: '1 Main Street',
+        city: 'Albany',
+        province: 'NY',
+        country: 'United States',
+        zip: '12207',
+      },
+      [],
+      '',
+      'customer@example.com',
+    );
+
+    expect(axiosRequest(0).data.query).toContain('email: "customer@example.com"');
+  });
 });
 
 describe('AppService draft order address persistence', () => {
