@@ -46,6 +46,39 @@ function resendMailService(): ResendMailService {
   } as unknown as ResendMailService;
 }
 
+describe('AppService suppressed draft-order invoices', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedAxios.mockResolvedValue({
+      data: {
+        data: {
+          draftOrderInvoiceSend: {
+            draftOrder: { id: 'gid://shopify/DraftOrder/42' },
+            userErrors: [],
+          },
+        },
+      },
+    });
+  });
+
+  afterEach(() => {
+    mockedAxios.mockReset();
+  });
+
+  it('keeps the existing success response on repeat requests without sending invoices or completing drafts', async () => {
+    const mailService = resendMailService();
+    const service = new AppService(configService(), mailService);
+
+    await expect(service.sendDraftOrderInvoice('42')).resolves.toBe(true);
+    await expect(
+      service.sendDraftOrderInvoice('gid://shopify/DraftOrder/42'),
+    ).resolves.toBe(true);
+
+    expect(mockedAxios).not.toHaveBeenCalled();
+    expect(mailService.sendMessage).not.toHaveBeenCalled();
+  });
+});
+
 function signedAppProxyQuery(
   params: Record<string, string>,
   secret = 'app-proxy-secret',
