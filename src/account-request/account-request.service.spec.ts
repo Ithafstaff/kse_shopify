@@ -104,6 +104,28 @@ describe('AccountRequestService', () => {
     expect(internalMessage.text).toContain('Comments: Please review');
   });
 
+  it('accepts multiline comments and safely normalizes them for email', async () => {
+    const result = await service.requestAccount({
+      ...baseInput,
+      comments: 'Please open an account.\r\nWe also need pricing information.',
+    });
+
+    expect(result.success).toBe(true);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+
+    const internalMessage = sendMessage.mock.calls[0][0];
+    const customerMessage = sendMessage.mock.calls[1][0];
+    expect(internalMessage.text).toContain(
+      'Comments: Please open an account. We also need pricing information.',
+    );
+    expect(internalMessage.html).toContain(
+      'Please open an account. We also need pricing information.',
+    );
+    expect(customerMessage.html).toContain(
+      'Please open an account. We also need pricing information.',
+    );
+  });
+
   it('rejects disabled account requests without sending email', async () => {
     const disabledConfig = {
       get: jest.fn((key: string) =>
@@ -178,7 +200,7 @@ describe('AccountRequestService', () => {
     ['invalid phone', { phone: '555' }],
     ['invalid email', { email: 'not-an-email' }],
     ['oversized comments', { comments: 'C'.repeat(2001) }],
-    ['header injection', { contactName: 'Gerald\r\nBcc: bad@example.com' }],
+    ['header injection', { businessName: 'Gerald\r\nBcc: bad@example.com' }],
   ])('rejects %s', async (_label, patch) => {
     await expect(
       service.requestAccount({
