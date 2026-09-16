@@ -185,7 +185,9 @@ export class AccountRequestService {
   }
 
   private hasHeaderInjection(input: AccountRequestInput): boolean {
-    return Object.values(input).some((value) => /[\r\n]/.test(String(value)));
+    return [input.businessName, input.email].some((value) =>
+      /[\r\n]/.test(String(value)),
+    );
   }
 
   private isEnabled(): boolean {
