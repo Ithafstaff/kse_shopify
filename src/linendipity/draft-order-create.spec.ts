@@ -300,6 +300,8 @@ describe('draft-order creation', () => {
   });
 
   it('surfaces Shopify mutation user errors and records the failed attempt', async () => {
+    const { Logger } = require('@nestjs/common');
+    const log = jest.spyOn(Logger.prototype, 'error').mockImplementation();
     const { DraftOrderService, normalizeDraftRequest } = load();
     const attempts = {
       claim: jest.fn().mockResolvedValue({ kind: 'claimed' }),
@@ -354,5 +356,13 @@ describe('draft-order creation', () => {
       request.idempotencyKey,
       'SHOPIFY_DRAFT_FAILED',
     );
+    expect(log).toHaveBeenCalledWith(
+      JSON.stringify({
+        event: 'shopify_admin_response_rejected',
+        stage: 'create_draft',
+        userErrors: [{ field: 'lineItems', message: 'Unavailable' }],
+      }),
+    );
+    log.mockRestore();
   });
 });

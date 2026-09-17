@@ -70,6 +70,44 @@ function sanitizedMessage(value: unknown): string | undefined {
     .slice(0, 240);
 }
 
+function sanitizedGraphqlErrors(value: unknown): Array<Record<string, string>> {
+  const source = record(value);
+  const values = Array.isArray(value)
+    ? value
+    : Array.isArray(source?.graphQLErrors)
+      ? source.graphQLErrors
+      : [];
+  return values.slice(0, 5).flatMap((entry) => {
+    const error = record(entry);
+    const extensions = record(error?.extensions);
+    const message = sanitizedMessage(error?.message);
+    if (!message) return [];
+    return [
+      {
+        ...(typeof extensions?.code === 'string'
+          ? { code: extensions.code.slice(0, 80) }
+          : {}),
+        message,
+      },
+    ];
+  });
+}
+
+function sanitizedUserErrors(
+  values: Array<{ field?: string[]; message: string }>,
+): Array<{ field: string; message: string }> {
+  return values.slice(0, 10).flatMap((entry) => {
+    const message = sanitizedMessage(entry?.message);
+    if (!message) return [];
+    return [
+      {
+        field: Array.isArray(entry.field) ? entry.field.join('.').slice(0, 160) : '',
+        message,
+      },
+    ];
+  });
+}
+
 export function shopifyRequestDiagnostic(error: unknown): Record<string, unknown> {
   const source = record(error);
   const errorName =
@@ -506,6 +544,23 @@ export class DraftOrderService {
     );
     this.assertGraphqlResponse(response);
     const result = response.data?.draftOrderCreate;
+    if (result?.userErrors?.length) {
+      this.logger.error(
+        JSON.stringify({
+          event: 'shopify_admin_response_rejected',
+          stage: 'create_draft',
+          userErrors: sanitizedUserErrors(result.userErrors),
+        }),
+      );
+    } else if (!result?.draftOrder) {
+      this.logger.error(
+        JSON.stringify({
+          event: 'shopify_admin_response_rejected',
+          stage: 'create_draft',
+          reason: 'missing_draft_order',
+        }),
+      );
+    }
     if (result?.userErrors?.length || !result?.draftOrder) {
       throw new DraftOrderError(
         502,
@@ -533,7 +588,17 @@ export class DraftOrderService {
     options?: { variables?: Record<string, unknown> },
   ): Promise<{ data?: T; errors?: unknown }> {
     try {
-      return await context.admin.request<T>(operation, options);
+      const response = await context.admin.request<T>(operation, options);
+      if (response?.errors) {
+        this.logger.error(
+          JSON.stringify({
+            event: 'shopify_admin_response_rejected',
+            stage,
+            graphqlErrors: sanitizedGraphqlErrors(response.errors),
+          }),
+        );
+      }
+      return response;
     } catch (error) {
       this.logger.error(
         JSON.stringify({
