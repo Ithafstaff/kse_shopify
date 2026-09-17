@@ -24,6 +24,32 @@ export type DraftRequestContext = {
   admin: AdminGraphqlClient;
 };
 
+export type DraftMoney = {
+  amount: string;
+  currencyCode: string;
+};
+
+export type DraftPage = {
+  orders: Array<{
+    id: string;
+    name: string;
+    createdAt: string;
+    status: string;
+    total: DraftMoney;
+    itemCount: number;
+    lineItems: Array<{
+      title: string;
+      variantTitle: string | null;
+      quantity: number;
+      unitPrice: DraftMoney;
+      totalPrice: DraftMoney;
+      properties: Array<{ key: string; value: string }>;
+    }>;
+  }>;
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  totalCount: number | null;
+};
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VARIANT_GID_PATTERN = /^gid:\/\/shopify\/ProductVariant\/(\d+)$/;
@@ -104,6 +130,121 @@ export class DraftOrderService {
       'claim' | 'complete' | 'fail'
     >,
   ) {}
+
+  async listDrafts(
+    context: DraftRequestContext,
+    pagination: { first?: string | number; after?: string } = {},
+  ): Promise<DraftPage> {
+    const requestedFirst = Number(pagination.first ?? 10);
+    const first = Number.isFinite(requestedFirst)
+      ? Math.max(1, Math.min(10, Math.trunc(requestedFirst)))
+      : 10;
+    const after = pagination.after?.trim() || null;
+    if (
+      after &&
+      (after.length > 512 || !/^[A-Za-z0-9+/_=-]+$/.test(after))
+    ) {
+      throw new DraftOrderError(
+        422,
+        'INVALID_CURSOR',
+        'The draft-order page cursor is invalid.',
+      );
+    }
+
+    const response = await context.admin.request<DraftListResponse>(
+      `query LinendipityCustomerDrafts(
+        $first: Int!
+        $after: String
+        $query: String!
+      ) {
+        draftOrders(
+          first: $first
+          after: $after
+          query: $query
+          sortKey: CREATED_AT
+          reverse: true
+        ) {
+          nodes {
+            id
+            name
+            createdAt
+            status
+            totalPriceSet { shopMoney { amount currencyCode } }
+            totalQuantityOfLineItems
+            customer { id }
+            lineItems(first: 50) {
+              nodes {
+                title
+                variantTitle
+                quantity
+                originalUnitPriceSet { shopMoney { amount currencyCode } }
+                originalTotalSet { shopMoney { amount currencyCode } }
+                customAttributes { key value }
+              }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+        draftOrdersCount(query: $query) { count }
+      }`,
+      {
+        variables: {
+          first,
+          after,
+          query: `customer_id:${context.customerId} tag:LinendipityDraft`,
+        },
+      },
+    );
+    this.assertGraphqlResponse(response);
+
+    const result = response.data;
+    if (!result?.draftOrders?.nodes || !result.draftOrders.pageInfo) {
+      throw new DraftOrderError(
+        502,
+        'SHOPIFY_DRAFT_FAILED',
+        'We could not load your draft orders. Please try again.',
+      );
+    }
+
+    const expectedCustomer = `gid://shopify/Customer/${context.customerId}`;
+    if (
+      result.draftOrders.nodes.some(
+        (draft) => draft.customer?.id !== expectedCustomer,
+      )
+    ) {
+      throw new DraftOrderError(
+        403,
+        'DRAFT_OWNERSHIP_MISMATCH',
+        'A draft order could not be verified for this customer.',
+      );
+    }
+
+    return {
+      orders: result.draftOrders.nodes.map((draft) => ({
+        id: draft.id,
+        name: draft.name,
+        createdAt: draft.createdAt,
+        status: draft.status,
+        total: draft.totalPriceSet.shopMoney,
+        itemCount: draft.totalQuantityOfLineItems,
+        lineItems: draft.lineItems.nodes.map((line) => ({
+          title: line.title,
+          variantTitle: line.variantTitle,
+          quantity: line.quantity,
+          unitPrice: line.originalUnitPriceSet.shopMoney,
+          totalPrice: line.originalTotalSet.shopMoney,
+          properties: (line.customAttributes || []).filter(
+            (property) => !property.key.startsWith('_'),
+          ),
+        })),
+      })),
+      pageInfo: result.draftOrders.pageInfo,
+      totalCount:
+        typeof result.draftOrdersCount?.count === 'number'
+          ? result.draftOrdersCount.count
+          : null,
+    };
+  }
 
   async createDraft(
     context: DraftRequestContext,
@@ -333,5 +474,31 @@ export class DraftOrderService {
     return `LinendipityAttempt_${digest}`;
   }
 }
+
+type DraftListResponse = {
+  draftOrders: {
+    nodes: Array<{
+      id: string;
+      name: string;
+      createdAt: string;
+      status: string;
+      totalPriceSet: { shopMoney: DraftMoney };
+      totalQuantityOfLineItems: number;
+      customer: { id: string } | null;
+      lineItems: {
+        nodes: Array<{
+          title: string;
+          variantTitle: string | null;
+          quantity: number;
+          originalUnitPriceSet: { shopMoney: DraftMoney };
+          originalTotalSet: { shopMoney: DraftMoney };
+          customAttributes: Array<{ key: string; value: string }>;
+        }>;
+      };
+    }>;
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  };
+  draftOrdersCount?: { count: number } | null;
+};
 
 export type { DraftAttemptClaim };
