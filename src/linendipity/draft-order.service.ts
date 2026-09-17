@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import {
   DraftAttemptClaim,
+  DraftAttemptConflictError,
   DraftAttemptRepository,
 } from './draft-attempt.repository';
 import { DraftSaveItem, DraftSaveRequest } from './draft-input';
@@ -251,12 +252,24 @@ export class DraftOrderService {
     request: DraftSaveRequest,
   ): Promise<{ id: string; name: string }> {
     const fingerprint = this.fingerprint(request.items);
-    const claim = await this.attempts.claim(
-      context.shop,
-      context.customerId,
-      request.idempotencyKey,
-      fingerprint,
-    );
+    let claim: DraftAttemptClaim;
+    try {
+      claim = await this.attempts.claim(
+        context.shop,
+        context.customerId,
+        request.idempotencyKey,
+        fingerprint,
+      );
+    } catch (error) {
+      if (error instanceof DraftAttemptConflictError) {
+        throw new DraftOrderError(
+          409,
+          'IDEMPOTENCY_CONFLICT',
+          'This save attempt no longer matches the current cart. Please start again.',
+        );
+      }
+      throw error;
+    }
 
     if (claim.kind === 'replay') return claim.draft;
 

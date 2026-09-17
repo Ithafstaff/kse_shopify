@@ -214,6 +214,30 @@ describe('draft-order creation', () => {
     expect(admin.request).not.toHaveBeenCalled();
   });
 
+  it('returns a safe conflict when a key is reused for different cart contents', async () => {
+    const { DraftOrderService, normalizeDraftRequest } = load();
+    const { DraftAttemptConflictError } = require('./draft-attempt.repository');
+    const attempts = {
+      claim: jest.fn().mockRejectedValue(new DraftAttemptConflictError()),
+      complete: jest.fn(),
+      fail: jest.fn(),
+    };
+    const admin = { request: jest.fn() };
+    const service = new DraftOrderService(attempts);
+
+    await expect(
+      service.createDraft(
+        { shop: 'hfbaf2-f9.myshopify.com', customerId: '123', admin },
+        normalizeDraftRequest({
+          idempotencyKey: '5c0d2a56-f36d-4a40-9d44-b9f0014a9c4f',
+          items: [{ variantId: '123', quantity: 1 }],
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'IDEMPOTENCY_CONFLICT' });
+    expect(admin.request).not.toHaveBeenCalled();
+    expect(attempts.fail).not.toHaveBeenCalled();
+  });
+
   it('recovers a Shopify draft created before the database attempt completed', async () => {
     const { DraftOrderService, normalizeDraftRequest } = load();
     const attempts = {
