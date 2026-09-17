@@ -166,4 +166,38 @@ describe('draft-order listing', () => {
       service.listDrafts(context(admin), {}),
     ).rejects.toMatchObject({ status: 403, code: 'DRAFT_OWNERSHIP_MISMATCH' });
   });
+
+  it('logs a sanitized stage when Shopify rejects the list query', async () => {
+    const { Logger } = require('@nestjs/common');
+    const log = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    const { DraftOrderService } = load();
+    const upstream = Object.assign(new Error('Access denied for draftOrders'), {
+      name: 'GraphqlQueryError',
+      body: {
+        errors: {
+          graphQLErrors: [
+            {
+              message: 'Access denied for draftOrders',
+              extensions: { code: 'ACCESS_DENIED' },
+            },
+          ],
+        },
+      },
+    });
+    const admin = { request: jest.fn().mockRejectedValue(upstream) };
+    const service = new DraftOrderService(attempts);
+
+    await expect(service.listDrafts(context(admin), {})).rejects.toBe(upstream);
+
+    expect(log).toHaveBeenCalledWith(
+      JSON.stringify({
+        event: 'shopify_admin_request_failed',
+        stage: 'list_drafts',
+        errorName: 'GraphqlQueryError',
+        graphqlCode: 'ACCESS_DENIED',
+        message: 'Access denied for draftOrders',
+      }),
+    );
+    log.mockRestore();
+  });
 });

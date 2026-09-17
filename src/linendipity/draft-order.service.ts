@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   DraftAttemptClaim,
   DraftAttemptConflictError,
@@ -55,6 +55,46 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VARIANT_GID_PATTERN = /^gid:\/\/shopify\/ProductVariant\/(\d+)$/;
 const CLIENT_PRICE_FIELD = /(?:^|_)(?:price|subtotal|total)(?:$|_)/i;
+
+function record(value: unknown): Record<string, any> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, any>)
+    : undefined;
+}
+
+function sanitizedMessage(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  return value
+    .replace(/gid:\/\/shopify\/[A-Za-z]+\/\d+/g, '[redacted-shopify-id]')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+    .slice(0, 240);
+}
+
+export function shopifyRequestDiagnostic(error: unknown): Record<string, unknown> {
+  const source = record(error);
+  const errorName =
+    typeof source?.name === 'string' && source.name ? source.name : 'Error';
+  const response = record(source?.response);
+  const body = record(source?.body) || record(response?.body);
+  const errors = record(body?.errors);
+  const graphQLErrors = Array.isArray(errors?.graphQLErrors)
+    ? errors.graphQLErrors
+    : [];
+  const firstGraphqlError = record(graphQLErrors[0]);
+  const extensions = record(firstGraphqlError?.extensions);
+  const diagnostic: Record<string, unknown> = { errorName };
+
+  if (typeof response?.code === 'number') diagnostic.httpStatus = response.code;
+  if (typeof extensions?.code === 'string') {
+    diagnostic.graphqlCode = extensions.code.slice(0, 80);
+  }
+  const message = sanitizedMessage(
+    firstGraphqlError?.message ||
+      (errorName === 'GraphqlQueryError' ? source?.message : undefined),
+  );
+  if (message) diagnostic.message = message;
+  return diagnostic;
+}
 
 function invalid(code = 'INVALID_DRAFT_REQUEST'): never {
   throw new DraftOrderError(422, code, 'The cart could not be saved.');
@@ -125,6 +165,8 @@ export function normalizeDraftRequest(value: unknown): DraftSaveRequest {
 
 @Injectable()
 export class DraftOrderService {
+  private readonly logger = new Logger(DraftOrderService.name);
+
   constructor(
     @Inject(DraftAttemptRepository)
     private readonly attempts: Pick<
@@ -153,7 +195,9 @@ export class DraftOrderService {
       );
     }
 
-    const response = await context.admin.request<DraftListResponse>(
+    const response = await this.requestAdmin<DraftListResponse>(
+      context,
+      'list_drafts',
       `query LinendipityCustomerDrafts(
         $first: Int!
         $after: String
@@ -338,12 +382,14 @@ export class DraftOrderService {
   private async loadCustomer(context: DraftRequestContext): Promise<{
     defaultAddress: Record<string, string>;
   }> {
-    const response = await context.admin.request<{
+    const response = await this.requestAdmin<{
       customer: {
         id: string;
         defaultAddress: Record<string, string | null> | null;
       } | null;
     }>(
+      context,
+      'load_customer',
       `query LinendipityDraftCustomer($id: ID!) {
         customer(id: $id) {
           id
@@ -397,9 +443,11 @@ export class DraftOrderService {
     context: DraftRequestContext,
     attemptTag: string,
   ): Promise<{ id: string; name: string } | null> {
-    const response = await context.admin.request<{
+    const response = await this.requestAdmin<{
       draftOrders: { nodes: Array<{ id: string; name: string; customer: { id: string } | null }> };
     }>(
+      context,
+      'recover_draft',
       `query LinendipityRecoverDraft($query: String!) {
         draftOrders(first: 2, query: $query, reverse: true) {
           nodes { id name customer { id } }
@@ -425,12 +473,14 @@ export class DraftOrderService {
     shippingAddress: Record<string, string>,
     attemptTag: string,
   ): Promise<{ id: string; name: string }> {
-    const response = await context.admin.request<{
+    const response = await this.requestAdmin<{
       draftOrderCreate: {
         draftOrder: { id: string; name: string } | null;
         userErrors: Array<{ field?: string[]; message: string }>;
       };
     }>(
+      context,
+      'create_draft',
       `mutation LinendipityCreateDraft($input: DraftOrderInput!) {
         draftOrderCreate(input: $input) {
           draftOrder { id name }
@@ -473,6 +523,26 @@ export class DraftOrderService {
         'SHOPIFY_DRAFT_FAILED',
         'We could not save your draft order. Please try again.',
       );
+    }
+  }
+
+  private async requestAdmin<T>(
+    context: DraftRequestContext,
+    stage: string,
+    operation: string,
+    options?: { variables?: Record<string, unknown> },
+  ): Promise<{ data?: T; errors?: unknown }> {
+    try {
+      return await context.admin.request<T>(operation, options);
+    } catch (error) {
+      this.logger.error(
+        JSON.stringify({
+          event: 'shopify_admin_request_failed',
+          stage,
+          ...shopifyRequestDiagnostic(error),
+        }),
+      );
+      throw error;
     }
   }
 
