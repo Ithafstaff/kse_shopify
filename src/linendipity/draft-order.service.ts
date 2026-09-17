@@ -173,7 +173,7 @@ export class DraftOrderService {
             totalPriceSet { shopMoney { amount currencyCode } }
             totalQuantityOfLineItems
             customer { id }
-            lineItems(first: 50) {
+            lineItems(first: 100) {
               nodes {
                 title
                 variantTitle

@@ -133,6 +133,7 @@ describe('draft-order listing', () => {
     expect(operation).toMatch(/reverse:\s*true/);
     expect(operation).toMatch(/totalPriceSet/);
     expect(operation).toMatch(/originalUnitPriceSet/);
+    expect(operation).toMatch(/lineItems\(first:\s*100\)/);
     expect(options.variables).toEqual({
       first: 10,
       after: 'c3RhcnQtY3Vyc29y',
