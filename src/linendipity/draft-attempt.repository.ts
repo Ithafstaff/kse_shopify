@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { DatabaseExecutor, DatabaseService } from './database.service';
 
 type AttemptRow = {
@@ -22,7 +22,10 @@ export class DraftAttemptConflictError extends Error {
 
 @Injectable()
 export class DraftAttemptRepository {
-  constructor(private readonly database: DatabaseService | DatabaseExecutor) {}
+  constructor(
+    @Inject(DatabaseService)
+    private readonly database: DatabaseExecutor,
+  ) {}
 
   async claim(
     shop: string,
