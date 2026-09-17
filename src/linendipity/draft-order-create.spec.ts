@@ -149,6 +149,15 @@ describe('draft-order creation', () => {
     expect(JSON.stringify(mutationOptions.variables)).not.toMatch(
       /price|subtotal|total/i,
     );
+    expect(mutationOptions.variables.input.tags).toEqual([
+      'LinendipityDraft',
+      expect.stringMatching(/^LinDraftAttempt_[0-9a-f]{24}$/),
+    ]);
+    expect(
+      mutationOptions.variables.input.tags.every(
+        (tag: string) => tag.length <= 40,
+      ),
+    ).toBe(true);
     expect(attempts.complete).toHaveBeenCalledWith(
       'hfbaf2-f9.myshopify.com',
       '123',
@@ -291,6 +300,9 @@ describe('draft-order creation', () => {
       ),
     ).resolves.toEqual({ id: 'gid://shopify/DraftOrder/99', name: '#D99' });
     expect(admin.request).toHaveBeenCalledTimes(2);
+    expect(admin.request.mock.calls[1][1].variables.query).toMatch(
+      /^customer_id:123 tag:LinDraftAttempt_[0-9a-f]{24}$/,
+    );
     expect(attempts.complete).toHaveBeenCalledWith(
       'hfbaf2-f9.myshopify.com',
       '123',

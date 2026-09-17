@@ -129,7 +129,8 @@ describe('draft-order listing', () => {
     });
 
     const [operation, options] = admin.request.mock.calls[0];
-    expect(operation).toMatch(/sortKey:\s*CREATED_AT/);
+    expect(operation).toMatch(/sortKey:\s*NUMBER/);
+    expect(operation).not.toMatch(/sortKey:\s*CREATED_AT/);
     expect(operation).toMatch(/reverse:\s*true/);
     expect(operation).toMatch(/totalPriceSet/);
     expect(operation).toMatch(/originalUnitPriceSet/);

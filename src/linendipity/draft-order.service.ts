@@ -245,7 +245,7 @@ export class DraftOrderService {
           first: $first
           after: $after
           query: $query
-          sortKey: CREATED_AT
+          sortKey: NUMBER
           reverse: true
         ) {
           nodes {
@@ -619,8 +619,8 @@ export class DraftOrderService {
     const digest = createHash('sha256')
       .update(`${shop}:${customerId}:${key}`)
       .digest('hex')
-      .slice(0, 32);
-    return `LinendipityAttempt_${digest}`;
+      .slice(0, 24);
+    return `LinDraftAttempt_${digest}`;
   }
 }
 
