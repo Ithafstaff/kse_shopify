@@ -1,10 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Session } from '@shopify/shopify-api';
 import { DatabaseExecutor, DatabaseService } from './database.service';
 
 @Injectable()
 export class SessionRepository {
-  constructor(private readonly database: DatabaseService | DatabaseExecutor) {}
+  constructor(
+    @Inject(DatabaseService)
+    private readonly database: DatabaseExecutor,
+  ) {}
 
   async store(session: Session): Promise<boolean> {
     const result = await this.database.query(

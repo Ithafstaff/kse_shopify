@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   DraftAttemptClaim,
   DraftAttemptConflictError,
@@ -126,6 +126,7 @@ export function normalizeDraftRequest(value: unknown): DraftSaveRequest {
 @Injectable()
 export class DraftOrderService {
   constructor(
+    @Inject(DraftAttemptRepository)
     private readonly attempts: Pick<
       DraftAttemptRepository,
       'claim' | 'complete' | 'fail'
